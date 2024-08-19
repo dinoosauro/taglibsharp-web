@@ -34,7 +34,7 @@ fluent-design-system-provider {
 fluent-select,
 fluent-text-field,
 fluent-text-area,
-fluent-button,
+fluent-button:not(.col-options-button),
 fluent-listbox {
     width: 100%;
     width: -webkit-fill-available;

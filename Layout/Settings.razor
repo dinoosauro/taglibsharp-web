@@ -35,7 +35,11 @@
     </label>
     <br>
     <h3>Change metadata view:</h3>
-    <FluentButton @onclick='() => {showGrid = !showGrid; GridUpdate(showGrid);}'>
+    <FluentButton @onclick='async () => {
+        showGrid = !showGrid; 
+        await JS.InvokeVoidAsync("setGridUI", [showGrid]);
+        GridUpdate(showGrid);
+     }'>
         @if (showGrid)
         {
             <p>Switch to "single file" view</p>

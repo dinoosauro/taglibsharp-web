@@ -21,7 +21,8 @@
         <FluentButton style="position: absolute; top: 15px; width: fit-content; right: 15px;"
             IconStart="@(new Icons.Regular.Size20.Settings())" Appearance="Appearance.Accent"
             @onclick='() => {showSettings = true;}'></FluentButton>
-        <InputFile multiple="true" id="filePicker" style="display: none;" OnChange="GetFiles">
+        <InputFile directory="@pickFolder" webkitdirectory="@pickFolder" multiple="true" id="filePicker"
+            style="display: none;" OnChange="GetFiles">
         </InputFile>
         <FluentToastProvider MaxToastCount="1" />
         @if (files.Count != 0)
@@ -44,8 +45,8 @@
                         <FluentCheckbox @bind-Value="@updateEverything">Update all the
                             seleted
                             files</FluentCheckbox><br>
-                        <FluentDataGrid ResizableColumns="true" Items="files.AsQueryable<TagInfoContainer>()"
-                            ItemKey="@(file => file.id)">
+                        <FluentDataGrid ResizableColumns="true" ResizeType="DataGridResizeType.Discrete"
+                            Items="files.AsQueryable<TagInfoContainer>()" ItemKey="@(file => file.id)">
                             <TemplateColumn Width="@((100 /(gridSelected.Count + 2)) + "%")" Sortable="false" Title="Actions:">
                                 <div class="flexContainer">
                                     <FluentButton IconStart="@(new Icons.Regular.Size20.Image())" @onclick='@(() => {
@@ -220,7 +221,8 @@
         {
             <FluentCard>
                 <h2>Choose files:</h2>
-                <FluentButton @onclick='() => JS.InvokeVoidAsync("clickInput")'>Choose files</FluentButton><br>
+                <FluentButton @onclick='() => JS.InvokeVoidAsync("clickInput")'>Choose files</FluentButton><br><br>
+                <FluentCheckbox @bind-Value="pickFolder">Choose a directory</FluentCheckbox><br>
                 <p>Don't worry. Everything will be elaborated locally</p>
             </FluentCard>
         }
@@ -336,6 +338,10 @@
     /// </summary>
     private bool showGrid = true;
     /// <summary>
+    /// Pick a directory instead of multiple files
+    /// </summary>
+    private bool pickFolder = false;
+    /// <summary>
     /// A list that contains all the selected tag options
     /// </summary>
     private List<AvailableProperties.PropertiesObject> gridSelected = new List<PropertiesObject>();
@@ -370,6 +376,7 @@
         if (firstRender) // Get the selected theme, and apply it
         {
             fileSystemAvailable = await JS.InvokeAsync<bool>("getFileSystemAvailability");
+            showGrid = await JS.InvokeAsync<bool>("getGridUI");
             await JS.InvokeVoidAsync("updateColor", [await JS.InvokeAsync<string>("getColor")]);
             await JS.InvokeVoidAsync("updateSlider", [(await JS.InvokeAsync<double>("getSliderValue")).ToString()]);
         }
