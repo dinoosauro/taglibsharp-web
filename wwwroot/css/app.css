@@ -1,0 +1,97 @@
+:root {
+    --body-font: "Work Sans", sans-serif !important;
+    font-family: var(--body-font) !important;
+    --dialog-width: 80vw !important;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    font-family: var(--body-font);
+    font-size: var(--type-ramp-base-font-size);
+    line-height: var(--type-ramp-base-line-height);
+    font-weight: var(--font-weight);
+    color: var(--neutral-foreground-rest, #fafafa);
+    background: var(--neutral-fill-layer-rest, #212121);
+}
+
+a {
+    color: var(--neutral-foreground-rest, #fafafa);
+}
+
+fluent-design-system-provider {
+    position: fixed;
+    top: 0;
+    left: 0;
+    padding: 15px;
+    min-width: calc(100vw - 30px);
+    min-height: calc(100vh - 30px);
+}
+
+
+
+fluent-select,
+fluent-text-field,
+fluent-text-area,
+fluent-button,
+fluent-listbox {
+    width: 100%;
+    width: -webkit-fill-available;
+    width: -moz-available;
+}
+
+fluent-option {
+    min-height: calc((var(--base-height-multiplier) + var(--density)) * var(--design-unit) * 1px);
+}
+
+fluent-listbox {
+    overflow: auto;
+}
+
+.labelFlex {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.fluent-dialog-header>div>div {
+    display: flex;
+    gap: 5px;
+}
+
+.fluent-dialog-header>div>div>h2 {
+    width: 100%;
+    margin: 0px;
+}
+
+.fluent-dialog-header>div>div>fluent-button {
+    width: fit-content;
+}
+
+
+.innerSelectDiv {
+    max-width: calc(100vw - (2 * var(--dialog-padding)));
+    width: 100%;
+    --dialog-padding: calc(var(--design-unit) * 6 * 1px);
+}
+
+fluent-data-grid-row>fluent-data-grid-cell:not(:first-child) {
+    padding-left: 0px;
+}
+
+.hover:hover {
+    cursor: pointer;
+}
+
+.flexContainer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.flexContainer>* {
+    flex: 1 0 fit-content !important;
+    width: fit-content !important;
+    display: inline-flex !important;
+}

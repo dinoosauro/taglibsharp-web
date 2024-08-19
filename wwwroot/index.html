@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TagLibSharp-Web</title>
+    <base href="./" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" type="image/png" href="icon.svg" />
+    <link href="MetadataChange.styles.css" rel="stylesheet" />
+    <meta name="description"
+        content="Add metadata and custom album art to video and audio files directly from your browser using TagLibSharp-Web. Everything is done locally!">
+    <link href="manifest.webmanifest" rel="manifest" />
+    <link rel="apple-touch-icon" sizes="512x512" href="icon.png" />
+    <script>
+        var base = document.getElementsByTagName('base')[0];
+        base.href = window.location.href.substring(0, window.location.href.lastIndexOf("/") + 1);
+    </script>
+</head>
+
+<body>
+    <div id="app">
+        <div class="loading-progress-text">
+            <h1>Welcome to TagLibSharp-Web!</h1>
+            <p>With TagLibSharp-Web, you can edit metadata of audio and video files, add custom metadata and also add a
+                custom album art to the files. You can select multiple files, batch edit them and then save everything
+                in a zip file or directly on your device.</p><br><br>
+            <p>Please wait a while. We're loading all the necessary resources for the website.</p>
+        </div>
+    </div>
+
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script>
+        const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" clip-rule="evenodd" viewBox="0 0 24 24"><g fill="#212121"><path d="M19.75 2A2.25 2.25 0 0 1 22 4.25v5.462a3.25 3.25 0 0 1-.952 2.298l-8.5 8.503a3.255 3.255 0 0 1-4.597.001L3.489 16.06a3.25 3.25 0 0 1-.004-4.596l8.5-8.51a3.25 3.25 0 0 1 2.3-.953h5.465Zm0 1.5h-5.466c-.464 0-.91.185-1.238.513l-8.512 8.523a1.75 1.75 0 0 0 .015 2.462l4.461 4.454a1.755 1.755 0 0 0 2.477 0l8.5-8.503a1.75 1.75 0 0 0 .513-1.237V4.25a.75.75 0 0 0-.75-.75ZM17 5.502a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"/><path d="M11.764 7.784a.363.363 0 0 0-.491.34v5.88a1.94 1.94 0 1 0 .716 1.726.363.363 0 0 0 .011-.091v-4.566l3.387 1.27a.364.364 0 0 0 .492-.34v-1.584c0-.657-.408-1.245-1.023-1.476l-3.092-1.16Zm-.491 7.734a1.212 1.212 0 1 1-2.424 0 1.212 1.212 0 0 1 2.424 0Zm3.878-4.04L12 10.296V8.65l2.6.975c.332.124.551.44.551.795v1.059Z"/></g></svg>`
+        /**
+         * Get the theme value, from 0.01 to 1
+        */
+        function getSliderValue() {
+            return +(localStorage.getItem("TagLibWeb-Theme") ?? "0.1")
+        }
+        /**
+         * Update the theme of the website
+        */
+        function updateSlider(val) {
+            val = val.replace(",", ".");
+            document.querySelector("fluent-design-system-provider").setAttribute("base-layer-luminance", val);
+            setTimeout(updateLogo, 100);
+            localStorage.setItem("TagLibWeb-Theme", val);
+        }
+        /**
+         * Check if the File System API is available
+        */
+        function getFileSystemAvailability() {
+            return typeof (window.showDirectoryPicker) !== "undefined";
+        }
+        /**
+         * Get the preference of the user about using the File System API for file save
+        */
+        function getFileSystemPreferredOption() {
+            return localStorage.getItem("TagLibWeb-UseFS") !== "b";
+        }
+        /**
+         * Get the default theme color
+        */
+        function getColor() {
+            return localStorage.getItem("TagLibWeb-Color") ?? "#036ac4";
+        }
+        /**
+        * Update the color of the logo
+        */
+        function updateLogo() {
+            if (!document.querySelector("fluent-design-system-provider") || !document.getElementById("logo")) {
+                setTimeout(updateLogo, 100);
+                return;
+            }
+            document.getElementById("logo").src = URL.createObjectURL(new Blob([svgIcon.replace("#212121", getComputedStyle(document.querySelector("fluent-design-system-provider")).getPropertyValue("--accent-fill-rest"))], { type: "image/svg+xml" }));
+        }
+        /**
+        * Update the default theme color
+        */
+        function updateColor(color) {
+            document.querySelector("fluent-design-system-provider").setAttribute("accent-base-color", color);
+            setTimeout(updateLogo, 100);
+            localStorage.setItem("TagLibWeb-Color", color);
+        }
+        /**
+         * Empty function, kept because InvokeJS sometimes has some issues with the first function called
+        */
+        function wakeUp() {
+
+        }
+        navigator.serviceWorker.register('service-worker.js', { scope: window.location.href.substring(0, window.location.href.lastIndexOf("/") + 1) });
+        const appVersion = "1.0.0";
+        fetch("./updatecode", { cache: "no-store" }).then((res) => res.text().then((text) => { if (text.replace("\n", "") !== appVersion) if (confirm(`There's a new version of TagLibSharp-Web. Do you want to update? [${appVersion} --> ${text.replace("\n", "")}]`)) { caches.delete("taglibsharpweb-cache"); location.reload(true); } }).catch((e) => { console.error(e) })).catch((e) => console.error(e)); // Check if the application code is the same as the current application version and, if not, ask the user to update
+    </script>
+</body>
+
+</html>

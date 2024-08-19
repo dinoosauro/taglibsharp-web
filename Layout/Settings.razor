@@ -1,0 +1,103 @@
+@using Microsoft.FluentUI.AspNetCore.Components;
+@using MetadataChange;
+@inject IJSRuntime JS;
+
+<FluentDialog>
+    <script>
+        /**
+        Save the preference of the user for the file system usage
+        */
+        function toggleFSUsage() {
+            localStorage.setItem("TagLibWeb-UseFS", localStorage.getItem("TagLibWeb-UseFS") !== "b" ? "b" : "a");
+        }
+    </script>
+    <FluentDialogHeader>
+        <div>
+            <h2>Settings:</h2>
+            <FluentButton Appearance="Appearance.Lightweight" @onclick="() => Callback()">X
+            </FluentButton>
+        </div>
+    </FluentDialogHeader>
+    <h3>Change theme:</h3>
+    <div style="align-items: end;" class="labelFlex">
+        <FluentSlider Min="0.01" Max="1" Step="0.01" @bind-Value="updateTheme">
+        </FluentSlider>
+        <FluentButton Appearance="Appearance.Lightweight" style="width: fit-content"
+            @onclick='() => JS.InvokeVoidAsync("updateSlider", [updateTheme.ToString()])'>
+            Apply</FluentButton>
+    </div>
+    <label class="labelFlex">
+        Custom color:
+        <FluentTextField type="color" Value="@currentlySelectedColor" @onchange='(e) => {
+                    JS.InvokeVoidAsync("updateColor", [e.Value.ToString()]);
+                    currentlySelectedColor = e.Value.ToString();
+                    }'></FluentTextField>
+    </label>
+    <br>
+    <h3>Change metadata view:</h3>
+    <FluentButton @onclick='() => {showGrid = !showGrid; GridUpdate(showGrid);}'>
+        @if (showGrid)
+        {
+            <p>Switch to "single file" view</p>
+        }
+        else
+        {
+            <p>Switch to grid view</p>
+        }
+    </FluentButton>
+    <i>Close the settings dialog to show the selected metadata edit UI</i><br><br>
+    @if (fileSystemAvailable)
+    {
+        <FluentCheckbox @bind-Value="enableFileSystemApi" @onchange='() => JS.InvokeVoidAsync("toggleFSUsage")'>
+            Use
+            the
+            File System API for single file download
+        </FluentCheckbox>
+    }
+
+</FluentDialog>
+@code {
+    /// <summary>
+    /// The Action to call for closing this dialog
+    /// </summary>
+    [Parameter]
+    public required Action Callback { get; set; }
+    /// <summary>
+    /// The Action to call for changing the metadata view (grid or single metadata)
+    /// </summary>
+    [Parameter]
+    public required Action<bool> GridUpdate { get; set; }
+    /// <summary>
+    /// If currently the metadata are shown in a grid
+    /// </summary>
+    [Parameter]
+    public required bool showGrid { get; set; }
+    /// <summary>
+    /// If the File System API can be used
+    /// </summary>
+    [Parameter]
+    public required bool fileSystemAvailable { get; set; }
+    /// <summary>
+    /// The double that contains the base-layer-luminance value for light or dark mode
+    /// </summary>
+    private double updateTheme = 0.1;
+    /// <summary>
+    /// The theme color selected
+    /// </summary>
+    private string currentlySelectedColor = "";
+    /// <summary>
+    /// If true, the File System API will be used when available
+    /// </summary>
+    private bool enableFileSystemApi = true;
+
+    protected override async void OnParametersSet()
+    {
+        updateTheme = await JS.InvokeAsync<double>("getSliderValue");
+        enableFileSystemApi = await JS.InvokeAsync<bool>("getFileSystemPreferredOption");
+        currentlySelectedColor = await JS.InvokeAsync<string>("getColor");
+        StateHasChanged();
+
+    }
+
+
+}

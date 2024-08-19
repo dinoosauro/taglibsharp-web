@@ -1,0 +1,16 @@
+{
+  "name": "TagLibSharp-Web",
+  "short_name": "TagLibSharp-Web",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#03173d",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icon.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

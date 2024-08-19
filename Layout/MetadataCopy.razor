@@ -1,0 +1,160 @@
+@using Microsoft.FluentUI.AspNetCore.Components;
+@using MetadataChange;
+
+<FluentDialog>
+    <FluentDialogHeader>
+        <div>
+            <h2>Copy metadata:</h2>
+            <FluentButton Appearance="Appearance.Lightweight" @onclick="() => Callback()">X</FluentButton>
+        </div>
+    </FluentDialogHeader>
+    @if (!copyToSameName) {
+        <p style="margin-top: 0px;">Copy from:</p>
+        <FluentSelect Items="Container" OptionText="@(item => item.file)" OptionValue="@(item => item.id)"
+            @bind-Value="CurrentPosition"></FluentSelect>
+    }
+    @if (!applyToEverything && !copyToSameName)
+    {
+        <p>To:</p>
+        <div class="innerSelectDiv">
+        <FluentSelect Items="Container" OptionText="@(item => item.file)" OptionValue="@(item => item.id)"
+            @bind-Value="selectedId"></FluentSelect>
+        </div><br>
+    }
+    @if (!copyToSameName) {
+        @if (applyToEverything) {
+            <br><br>
+        }
+    <FluentCheckbox @bind-Value="applyToEverything">Apply to every selected file</FluentCheckbox><br><br>
+    } 
+    @if (!applyToEverything) {
+    <FluentCheckbox @bind-Value="copyToSameName">Apply to the files that have the same name</FluentCheckbox><br><br>
+    }
+    @if (copyToSameName) {
+        <label class="labelFlex">Copy from the file with the extension: <FluentTextField @bind-Value="copySource"></FluentTextField></label><br>
+    }
+    <FluentCheckbox @bind-Value="overwrite">Overwrite existing tags</FluentCheckbox><br><br>
+    <FluentCheckbox @bind-Value="copyImage">Copy album art</FluentCheckbox><br><br>
+        <FluentButton @onclick="ApplyItems" Appearance="Appearance.Accent">Apply</FluentButton>
+</FluentDialog>
+
+@code {
+    /// <summary>
+    /// The list of all the files that are loaded in the website
+    /// </summary>
+    [Parameter]
+    public required List<TagInfoContainer> Container { get; set; }
+    /// <summary>
+    /// The Action to call for closing this dialog
+    /// </summary>
+    [Parameter]
+    public required Action Callback { get; set; }
+    /// <summary>
+    /// The selected file (SOURCE)
+    /// </summary>
+    [Parameter]
+    public required string CurrentPosition { get; set; }
+    /// <summary>
+    /// The selected file (DESTINATION)
+    /// </summary>
+    private string selectedId = "0";
+    /// <summary>
+    /// If the metadata should be copied to all the files
+    /// </summary>
+    private bool applyToEverything = false;
+    /// <summary>
+    /// If the metadata should be overwritten
+    /// </summary>
+    private bool overwrite = false;
+    /// <summary>
+    /// If also the image shuold be copied
+    /// </summary>
+    private bool copyImage = true;
+    /// <summary>
+    /// If enabled, the script will copy metadata from the files that have the same name (and different extensions) 
+    /// </summary>
+    private bool copyToSameName = false;
+    /// <summary>
+    /// When copying metadata from the files with the same name, the source file will be the first that matches this extension
+    /// </summary>
+    private string copySource = "";
+    /// <summary>
+    /// The function that copies the basic tags, and the album art, from a file to another
+    /// </summary>
+    /// <param name="source">The TagLib.Tag to copy from</param>
+    /// <param name="output">The TagLib.Tag to copy to</param>
+    /// <param name="sourceContainer">The TagInfoContainer, used to create a new TagLib.File in case of issues with Apple tags (see below). Note that this value must remain separed from the source tag, since TagLib.Tag usually are read-only</param>
+    private void CopyTag(TagLib.Tag source, TagLib.Tag output, TagInfoContainer sourceContainer)
+    {
+        string[]? tempPerformers = null; // A bug in TagLib Sharp causes an Exception when copying the performers tag using "CopyTo" in Apple container. We'll add it manually.
+        if (CustomMetadataFormat.GetSuggestedContainer(output.TagTypes.ToString().ToLower()) ==
+        CustomMetadataFormat.CustomMetadataTypes.APPLE)
+        { 
+
+            tempPerformers = source.Performers;
+            try {
+                source = generateNewTagFile(sourceContainer).Tag; // It's important to generate a new TagLib.File, since this fix works only for the first time a Tag is copied
+                source.Performers = null;
+            } catch (Exception)
+            {
+                source.Performers = [];
+            }
+        }
+        source.CopyTo(output, overwrite);
+        if (copyImage) output.Pictures = source.Pictures;
+        if (tempPerformers != null)
+        {
+            output.Performers = tempPerformers;
+            source.Performers = tempPerformers;
+        }
+    }
+    private void CopyTag(TagLib.Tag source, TagLib.Tag output) {
+        CopyTag(source, output, Container[int.Parse(CurrentPosition)]);
+    }
+    
+    /// <summary>
+    /// This function generates a new TagLib.File by re-reading the file in memory.
+    /// This is used since it's the only way it's possible to copy metadata to an AppleTag without getting a NullPointerException.
+    /// I honestly don't know why, but it's important to generate a new File. Otherwise, if other files are copied before the AppleTag, the library throws an error.
+    /// </summary>
+    /// <param name="container">The TagInfoContainer that needs to be cloned. Note th</param>
+    /// <returns>The new TagLib.File to use</returns>
+    private TagLib.File generateNewTagFile(TagInfoContainer container) {
+        return TagLib.File.Create(new StreamFileAbstraction(container.file, container.memoryStream));
+    }
+    /// <summary>
+    /// Copy the metadata from the source to the destination
+    /// </summary>
+
+    private void ApplyItems()
+    {
+        Container[int.Parse(CurrentPosition)].tag.Save(); // Save the current tag, since it might be re-created later.
+        if (!applyToEverything && !copyToSameName)
+        {
+            if (selectedId != CurrentPosition) CopyTag(Container[int.Parse(CurrentPosition)].tag.Tag, Container[int.Parse(selectedId)].tag.Tag); // The two files are different: we can copy the metadata
+        }
+        else if (!copyToSameName) // The selected file must be copied everywhere.
+        {
+            foreach (TagInfoContainer infoContainer in Container)
+            {
+                if (infoContainer.id != CurrentPosition) CopyTag(Container[int.Parse(CurrentPosition)].tag.Tag, infoContainer.tag.Tag); // Ignore the source file
+            }
+        } else { // Copy all the files that have the same name
+            foreach (List<TagInfoContainer> applyThis in (new GetFilesWithSameName(Container)).allowedValues.Values) { 
+                /// <summary>
+                /// The file that will be used as a source: the first that ends with the extension
+                /// </summary>
+                TagInfoContainer? source = applyThis.Find(item => item.file.EndsWith(copySource)); 
+                if (source != null) {
+                    source.tag.Save();
+                    foreach (TagInfoContainer destination in applyThis) {
+                        if (destination != source) CopyTag(source.tag.Tag, destination.tag.Tag, source);
+                    }
+                }
+
+            }
+        }
+        Callback();
+    }
+
+}

@@ -1,0 +1,587 @@
+﻿@using System.Reflection;
+@using static AvailableProperties;
+@using Microsoft.FluentUI.AspNetCore.Components;
+@using System.IO.Compression;
+@using MetadataChange.Layout;
+@using MetadataChange;
+@using System.Text.Json.Serialization
+@inject IToastService ToastService
+@inject IJSRuntime JS;
+
+<FluentDesignSystemProvider Font BaseLayerLuminance="(float) 0.1">
+    <div
+        style="max-width: calc(100vw - 30px); max-height: calc(100vh - 30px); width: calc(100vw - 30px); top: 0; left: 0; position: fixed; padding: 15px; overflow: auto;">
+        <header>
+            <div class="labelFlex">
+                <img style="width: 48px; height: 48px" id="logo">
+                <h1>TagLibSharp-Web</h1>
+            </div>
+            <p>Edit all the metadata of an audio or video file using TagLib Sharp</p>
+        </header><br>
+        <FluentButton style="position: absolute; top: 15px; width: fit-content; right: 15px;"
+            IconStart="@(new Icons.Regular.Size20.Settings())" Appearance="Appearance.Accent"
+            @onclick='() => {showSettings = true;}'></FluentButton>
+        <InputFile multiple="true" id="filePicker" style="display: none;" OnChange="GetFiles">
+        </InputFile>
+        <FluentToastProvider MaxToastCount="1" />
+        @if (files.Count != 0)
+        {
+            <FluentCard style="contain: inherit; content-visibility: inherit;">
+                <h2>Edit metadata:</h2>
+                @if (showGrid)
+                {
+                    <p>Choose the fields to show in the table:</p>
+                    <FluentListbox Items=@(AvailableProperties.AvailableMetadata) Multiple="true" Height="15vh"
+                        TOption="AvailableProperties.PropertiesObject" OptionText="@(file => file.DisplayName)"
+                        SelectedOptionsChanged="(file) => {
+                                    gridSelected = file.ToList();
+                                    StateHasChanged();
+                        }">
+                    </FluentListbox>
+                    <br>
+                    <br>
+                    <FluentCard style="background: var(--neutral-fill-active);">
+                        <FluentCheckbox @bind-Value="@updateEverything">Update all the
+                            seleted
+                            files</FluentCheckbox><br>
+                        <FluentDataGrid ResizableColumns="true" Items="files.AsQueryable<TagInfoContainer>()"
+                            ItemKey="@(file => file.id)">
+                            <TemplateColumn Width="@((100 /(gridSelected.Count + 2)) + "%")" Sortable="false" Title="Actions:">
+                                <div class="flexContainer">
+                                    <FluentButton IconStart="@(new Icons.Regular.Size20.Image())" @onclick='@(() => {
+                                        fileEditPosition = int.Parse(@context.id);
+                                        showImageDialog = true;
+                                    })'>
+                                    </FluentButton>
+                                    <FluentButton IconStart="@(new Icons.Regular.Size20.StarEdit())" @onclick='@(() => {
+                                    fileEditPosition = int.Parse(@context.id);
+                                    showCustomMetadata = true;
+                                })'></FluentButton>
+                                </div>
+                            </TemplateColumn>
+                            <TemplateColumn Width="@((100 /(gridSelected.Count + 2)) + "%")"
+                                SortBy="GridSort<TagInfoContainer>.ByAscending(file => file.file)" Title="File name:"
+                                Sortable="true">
+                                <a style="text-decoration: underline; white-space: normal"
+                                    @onclick='() => SaveItem(context)'>@context.file</a>
+                            </TemplateColumn>
+                            @foreach (AvailableProperties.PropertiesObject metadata in gridSelected)
+                            {
+                                <TemplateColumn Width="@((100 /(gridSelected.Count + 2)) + "%")" SortBy="gridSort(metadata)"
+                                    Title="@metadata.DisplayName" Sortable="true">
+                                    <FluentTextField Value="@TagValueHandler.GetCurrentValue(metadata.TagLibProperty, context)"
+                                        @onchange='(val) => UpdateValueFromEvent(val, metadata, context)' />
+                                </TemplateColumn>
+                            }
+                        </FluentDataGrid><br>
+                        <FluentButton @onclick='() => JS.InvokeVoidAsync("clickInput")' Appearance="Appearance.Lightweight">Add
+                            files</FluentButton>
+                    </FluentCard>
+                }
+                else
+                {
+                    <div class="labelFlex">
+                        <FluentSelect @onchange="(val) => {fileEditPosition = int.Parse(val.Value.ToString());}" Items="files "
+                            OptionValue="@(file => file.id)" OptionText="@(file => file.file)"></FluentSelect>
+                        <FluentButton Appearance="Appearance.Accent" style="width: fit-content"
+                            @onclick='() => JS.InvokeVoidAsync("clickInput")'>+
+                        </FluentButton>
+                    </div>
+                    <p>Choose a property to edit about the metadata</p>
+                    <FluentSelect Items=@(AvailableProperties.AvailableMetadata.Select(file => file.DisplayName))
+                        TOption="string"
+                        @onchange="(val) => {selectedItem = AvailableProperties.AvailableMetadata.Find(item => item.DisplayName == val.Value.ToString());}">
+                    </FluentSelect>
+
+                    <br>
+
+                    <br>
+                    <FluentCard style="background: var(--neutral-fill-active);">
+                        @if (selectedItem.ConvertValue ==
+                       AvailableProperties.PropertiesObject.PropertiesType.STRING_TEXTAREA)
+                        {
+                            <FluentTextArea @onchange="UpdateValueFromEvent"
+                                value=@(TagValueHandler.GetCurrentValue(selectedItem.TagLibProperty, files[fileEditPosition]))>
+                            </FluentTextArea>
+                        }
+                        else
+                        {
+                            <FluentTextField @onchange=" UpdateValueFromEvent"
+                                value=@(TagValueHandler.GetCurrentValue(selectedItem.TagLibProperty, files[fileEditPosition]))
+                                type=@(selectedItem.ConvertValue == AvailableProperties.PropertiesObject.PropertiesType.UINT ?
+                    "number" : "text")>
+                            </FluentTextField>
+                        }
+                        <br><br>
+                        <FluentCheckbox @bind-Value="@updateEverything"
+                            @onchange="() => UpdateValueForEverything(selectedItem)">Update all the
+                            seleted
+                            files</FluentCheckbox>
+                    </FluentCard>
+
+                }
+                <br>
+                <div class="flexContainer">
+                    @if (!showGrid)
+                    {
+                        <FluentButton @onclick='() => {showImageDialog = true;}' Appearance="Appearance.Accent">Change album art
+                        </FluentButton>
+                        <FluentButton @onclick='() => {showCustomMetadata = true;}'>Add custom
+                            metadata</FluentButton>
+                    }
+                    <FluentButton Appearance="@(showGrid ? Appearance.Accent : Appearance.Outline)"
+                        @onclick='() => {showCopyMetadata = true;}'>Copy
+                        metadata
+                    </FluentButton>
+                </div><br>
+            </FluentCard>
+
+
+            <br>
+            <FluentCard>
+                <div class="flexContainer">
+                    @if (!showGrid)
+                    {
+                        <FluentButton Appearance="Appearance.Accent" @onclick="() => SaveItem(files[fileEditPosition])">Download
+                            edited
+                            file
+                        </FluentButton>
+                    }
+                    <FluentButton @onclick="SaveItemsFSApi"
+                        Appearance="@(showGrid ? Appearance.Accent : Appearance.Neutral)">Save everything in your device's
+                        folder</FluentButton>
+                    <FluentButton @onclick="SaveItemsInZip"
+                        Appearance="@(showGrid ? Appearance.Neutral : Appearance.Outline)">Download everything in a ZIP
+                        file
+                    </FluentButton>
+                </div>
+            </FluentCard>
+
+            <br>
+            <FluentCard style="contain: inherit; content-visibility: inherit;">
+                <h2>Redownload files:</h2>
+                <p>Choose a file to download again, then click on the link. You can also delete the entry (the
+                    downloaded file will remain on the device).</p>
+                <div class="labelFlex">
+                    <FluentSelect @bind-Value="selectedFileDownload" TOption="DownloadResult"
+                        OptionValue="@(file => file.url)" OptionText="@(file => file.name)" Items="redownloadFiles">
+                    </FluentSelect>
+                    <FluentButton style="width: fit-content;" Appearance="Appearance.Accent" @onclick='async () => {
+                        redownloadFiles.Remove(redownloadFiles.Find(file => file.url == selectedFileDownload));
+                        await JS.InvokeVoidAsync("revokeUrl", [selectedFileDownload]);
+                        selectedFileDownload = "";
+
+                    }' IconStart="@(new Icons.Regular.Size20.Delete())">
+                    </FluentButton>
+                </div><br>
+                @if (selectedFileDownload != "" && selectedFileDownload != null)
+                {
+                    <a style="color: var(--neutral-foreground-rest)" href="@selectedFileDownload"
+                        download="@(redownloadFiles.Find(file => file.url == selectedFileDownload).name)">Download again</a>
+                }
+            </FluentCard>
+            @if (showImageDialog)
+            {
+                <MetadataChange.Layout.ImageElement imageTags="@(files[fileEditPosition].tag.Tag.Pictures)"
+                    GetUpdatedList="UpdateAlbumArt">
+                </MetadataChange.Layout.ImageElement>
+            }
+            @if (showCustomMetadata)
+            {
+                <CustomMetadata AvailableTags="files" Callback="() => {
+                    showCustomMetadata = false;
+                     StateHasChanged();
+                }" CurrentFile="fileEditPosition">
+                </CustomMetadata>
+            }
+            @if (showCopyMetadata)
+            {
+                <MetadataCopy Container="files" CurrentPosition="@fileEditPosition.ToString()" Callback="() => {
+                    showCopyMetadata = false;
+                    StateHasChanged();
+                }">
+                </MetadataCopy>
+            }
+        }
+        else
+        {
+            <FluentCard>
+                <h2>Choose files:</h2>
+                <FluentButton @onclick='() => JS.InvokeVoidAsync("clickInput")'>Choose files</FluentButton><br>
+                <p>Don't worry. Everything will be elaborated locally</p>
+            </FluentCard>
+        }
+        @if (showSettings)
+        {
+            <Settings GridUpdate="(val) => {showGrid = val; StateHasChanged();}" fileSystemAvailable="fileSystemAvailable"
+                showGrid="showGrid" Callback="() => {
+                    showSettings = false;
+                    StateHasChanged();
+                }"></Settings>
+        }
+        @if (showLicenses)
+        {
+            <Licenses Callback="() => {
+                showLicenses = false;
+                StateHasChanged();
+            }"></Licenses>
+        }
+        <br>
+        <FluentCard>
+            <h2>Credits:</h2>
+            <p>Website made with <a href="https://github.com/dotnet/aspnetcore" target="_blank">Blazor WebAssembly</a>
+                and the <a target="_blank" href="https://github.com/mono/taglib-sharp">TagLib-Sharp library</a>. This
+                project is in no way affiliated with TagLib-Sharp.</p><br>
+            <a style="margin-right: 10px;" href="https://github.com/dinoosauro/taglibweb-sharp" target="_blank">View on
+                GitHub</a>
+            <label style="text-decoration: underline;" class="hover" @onclick="() => {showLicenses = true;}">View
+                licenses</label>
+        </FluentCard>
+    </div>
+</FluentDesignSystemProvider>
+
+<script>
+    /**
+    The File System Directory Handle for saving multiple files.
+    If this value isn't nullish, the next files will be saved there.
+    */
+    let directoryHandle;
+    async function downloadByteArray(byte, name, useDirectoryHandle) {
+        // The values returned are [The link (or null if the File System API has been used), the file name, "0" if the File System API has been used, or "1" if it hasn't been used]
+        if (useDirectoryHandle && typeof (window.showDirectoryPicker) !== "undefined") {
+            if (!directoryHandle) directoryHandle = await window.showDirectoryPicker({ mode: "readwrite", id: "TagLibWeb-Picker" });
+            const handle = await directoryHandle.getFileHandle(name, { create: true });
+            const writable = await handle.createWritable();
+            await writable.write(byte);
+            await writable.close();
+            return [null, name, "0"];
+        } else if (localStorage.getItem("TagLibWeb-UseFS") !== "b" && typeof (window.showSaveFilePicker) !== "undefined") {
+            try {
+                const handle = await window.showSaveFilePicker({ id: "TagLibWeb-Picker", suggestedName: name });
+                const writable = await handle.createWritable();
+                await writable.write(byte);
+                await writable.close();
+                return [null, name, "0"];
+            } catch (ex) {
+                console.warn("Failed usage of the File System API", ex);
+            }
+        }
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([byte]));
+        a.download = name;
+        a.click();
+        return [a.href, name, "1"];
+    }
+    /**
+    Remove the previously-selected directory handle
+    */
+    function clearDirectoryHandle() {
+        directoryHandle = undefined;
+    }
+    /**
+    Open new files from the user's drive
+    */
+    function clickInput() {
+        document.getElementById("filePicker").click();
+    }
+    /**
+    Revoke a Blob URL
+    */
+    function revokeUrl(url) {
+        URL.revokeObjectURL(url);
+    }
+</script>
+
+@code {
+
+    /// <summary>
+    /// If the current value should be applied to all the items
+    /// </summary>
+    private bool updateEverything = false;
+    /// <summary>
+    /// If the album art editor should be shown
+    /// </summary>
+    public bool showImageDialog = false;
+    /// <summary>
+    /// If the "add a custom metadata" dialog should be shown
+    /// </summary>
+    public bool showCustomMetadata = false;
+    /// <summary>
+    /// If the "copy metadata from a tag to another" should be shown
+    /// </summary>
+    public bool showCopyMetadata = false;
+    /// <summary>
+    /// If the settings dialog should be shown
+    /// </summary>
+    public bool showSettings = false;
+    /// <summary>
+    /// If the licenses dialog should be shown
+    /// </summary>
+    public bool showLicenses = false;
+    /// <summary>
+    /// Switch to the metadata grid view instead of the cloassic single metadata view
+    /// </summary>
+    private bool showGrid = true;
+    /// <summary>
+    /// A list that contains all the selected tag options
+    /// </summary>
+    private List<AvailableProperties.PropertiesObject> gridSelected = new List<PropertiesObject>();
+    /// <summary>
+    /// Information about the currently-selected tag
+    /// </summary>
+    private AvailableProperties.PropertiesObject selectedItem = AvailableProperties.AvailableMetadata[0];
+    /// <summary>
+    /// All the files that have been selected
+    /// </summary>
+    private List<TagInfoContainer> files = new List<TagInfoContainer>();
+    /// <summary>
+    /// The position of the file that is being currently edited
+    /// </summary>
+    public int fileEditPosition = 0;
+    /// <summary>
+    /// If the File System API is supported by the browser
+    /// </summary>
+    private bool fileSystemAvailable = false;
+    /// <summary>
+    /// A list of the Blob URLs that can be re-downloaded
+    /// </summary>
+    private List<DownloadResult> redownloadFiles = new List<DownloadResult>();
+    /// <summary>
+    /// The URL of the link to download the currently-selected file (in the "Redownload files" tab)
+    /// </summary>
+    private string selectedFileDownload = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (firstRender) // Get the selected theme, and apply it
+        {
+            fileSystemAvailable = await JS.InvokeAsync<bool>("getFileSystemAvailability");
+            await JS.InvokeVoidAsync("updateColor", [await JS.InvokeAsync<string>("getColor")]);
+            await JS.InvokeVoidAsync("updateSlider", [(await JS.InvokeAsync<double>("getSliderValue")).ToString()]);
+        }
+    }
+
+    /// <summary>
+    /// Update the Album Art for the selected items
+    /// </summary>
+    /// <param name="images">A list of the new images to add</param>
+    /// <param name="destination">If the image should be applied only to the selected image, to everything, or if the edits
+    /// should be discarded.</param>
+    private void UpdateAlbumArt(List<ImageElement.ImageTagCount> images, ImageElement.ApplyDestination destination)
+    {
+        TagLib.IPicture[] pictures = images.Select(item => item.picture).ToArray();
+        switch (destination)
+        {
+            case ImageElement.ApplyDestination.APPLY_CURRENT:
+                files[fileEditPosition].tag.Tag.Pictures = pictures;
+                break;
+            case ImageElement.ApplyDestination.APPLY_EVERYTHING:
+                foreach (TagInfoContainer file in files) file.tag.Tag.Pictures = pictures;
+                break;
+            case ImageElement.ApplyDestination.APPLY_SAME_NAME:
+                var dictionary = (new GetFilesWithSameName(files)).allowedValues;
+                if (dictionary.TryGetValue(files[fileEditPosition].file.Substring(0, files[fileEditPosition].file.LastIndexOf(".")), out
+                List<TagInfoContainer> applyToThis))
+                {
+                    foreach (TagInfoContainer apply in applyToThis) apply.tag.Tag.Pictures = pictures;
+                }
+                break;
+            case ImageElement.ApplyDestination.APPLY_SAME_ALBUM:
+                foreach (TagInfoContainer file in files)
+                {
+                    if (file.tag.Tag.Album == files[fileEditPosition].tag.Tag.Album) file.tag.Tag.Pictures = pictures;
+                }
+                break;
+
+        }
+        showImageDialog = false;
+        StateHasChanged();
+    }
+    /// <summary>
+    /// Apply the currently selected values to all the items
+    /// </summary>
+    private void UpdateValueForEverything(AvailableProperties.PropertiesObject item)
+    {
+        if (updateEverything) TagValueHandler.SetCurrentValue(TagValueHandler.GetCurrentValue(item.TagLibProperty,
+        files[fileEditPosition]), files,
+        item);
+    }
+    /// <summary>
+    /// Update the tag from the user's input in a FluentTextField
+    /// <param name="val">The ChangeEventArgs triggered</param>
+    /// <param name="item">The PropertiesObject to change</param>
+    /// <param name="selectedFile">The TagInfoContainer of the file that needs to be edited</param>
+    /// </summary>
+    private void UpdateValueFromEvent(ChangeEventArgs val, AvailableProperties.PropertiesObject item, TagInfoContainer
+    selectedFile)
+    {
+        if (updateEverything) TagValueHandler.SetCurrentValue(val.Value == null ? null : val.Value.ToString(), files,
+        item);
+        else TagValueHandler.SetCurrentValue(val.Value == null ? null : val.Value.ToString(), selectedFile.tag.Tag,
+        item);
+    }
+    /// <summary>
+    /// Update the tag from the user's input in a FluentTextField. The updated file will be the currently-selected one.
+    /// <param name="val">The ChangeEventArgs triggered</param>
+    /// <param name="item">The PropertiesObject to change</param>
+    /// </summary>
+
+    private void UpdateValueFromEvent(ChangeEventArgs val, AvailableProperties.PropertiesObject item)
+    {
+        UpdateValueFromEvent(val, item, files[fileEditPosition]);
+    }
+    /// <summary>
+    /// Update the tag from the user's input in a FluentTextField. The updated file will be the currently-selected one. The
+    /// property update will be the selected one.
+    /// <param name="val">The ChangeEventArgs triggered</param>
+    /// <param name="item">The PropertiesObject to change</param>
+    /// </summary>
+    private void UpdateValueFromEvent(ChangeEventArgs val)
+    {
+        UpdateValueFromEvent(val, selectedItem);
+    }
+    /// <summary>
+    /// Read all the files from an FileEvent, and create a new TagLib.Tag
+    /// </summary>
+    /// <param name="e">The FileInput event</param>
+    private async Task GetFiles(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(maximumFileCount: 99999))
+        {
+            try
+            {
+                var stream = file.OpenReadStream(maxAllowedSize: 1024 * 1024 * 1024);
+                var memoryStream = new MemoryStream();
+                await stream.CopyToAsync(memoryStream);
+                byte[] fileBytes = memoryStream.ToArray();
+                files.Add(new TagInfoContainer(TagLib.File.Create(new StreamFileAbstraction(file.Name, memoryStream)), memoryStream,
+                file.Name, files.Count.ToString()));
+                ToastService.ClearProgressToasts();
+                ToastService.ShowProgress("Read: " + file.Name, 3000);
+                await Task.Yield();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+        }
+    }
+    /// <summary>
+    /// Download a file to the user's device
+    /// </summary>
+    /// <param name="container">The TagInfoContainer object of the file to download</param>
+    private async Task SaveItem(TagInfoContainer container)
+    {
+        container.tag.Save();
+        string?[] result = await JS.InvokeAsync<string[]>("downloadByteArray", [container.memoryStream.ToArray(),
+container.file]);
+        if (result[0] != null) redownloadFiles.Add(new DownloadResult(result[2] == "0", result[0], result[1]));
+        // If true, the file will be downloaded using the File System API
+        ToastService.ClearProgressToasts();
+        ToastService.ShowProgress((result[2] == "0" ? "Written on the device: " : "Started file downloading: ") +
+        container.file,
+        3000);
+    }
+    /// <summary>
+    /// Save everything in a Zip file
+    /// </summary>
+    private async Task SaveItemsInZip()
+    {
+
+        // Note: without the brackets, the zip file would not be readable in macOS.
+        using (MemoryStream stream = new MemoryStream())
+        {
+
+            using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
+            {
+
+                foreach (TagInfoContainer file in files)
+                {
+                    file.tag.Save();
+                    ZipArchiveEntry entry = archive.CreateEntry(file.file, CompressionLevel.Fastest);
+                    using (Stream fileStream = entry.Open()) await fileStream.WriteAsync(file.memoryStream.ToArray());
+                    ToastService.ClearProgressToasts();
+                    ToastService.ShowProgress("Added " + file.file + " in the zip file", 3000);
+                    await Task.Yield();
+                }
+            };
+
+            stream.Position = 0;
+            string?[] result = await JS.InvokeAsync<string?[]>("downloadByteArray", [stream.ToArray(),
+"EditedMetadata.zip"]);
+            if (result[0] != null) redownloadFiles.Add(new DownloadResult(result[2] == "0", result[0], result[1]));
+            ToastService.ClearProgressToasts();
+            ToastService.ShowProgress("The zip file has been " + (result[2] == "0" ? "written on the device!" : "downloaded!"),
+            7500);
+        };
+    }
+    /// <summary>
+    /// Save all the tags directly on the user's drive using the File System API
+    /// </summary>
+    private async Task SaveItemsFSApi()
+    {
+        foreach (TagInfoContainer file in files)
+        {
+            file.tag.Save();
+            string?[] result = await JS.InvokeAsync<string?[]>("downloadByteArray", [file.memoryStream.ToArray(), file.file, true]);
+            if (result[0] != null) redownloadFiles.Add(new DownloadResult(result[2] == "0", result[0], result[1]));
+            ToastService.ClearProgressToasts();
+            ToastService.ShowProgress("Written " + file.file + " on the device's folder", 3000);
+            await Task.Yield();
+        }
+        await JS.InvokeVoidAsync("clearDirectoryHandle");
+        ToastService.ClearProgressToasts();
+        ToastService.ShowProgress("All the files have been written to the device's folder", 7500);
+    }
+    /// <summary>
+    /// Sort a grid in alphabetical order
+    /// </summary>
+    /// <param name="container">The PropertiesObject of the property to sort</param>
+    private GridSort<TagInfoContainer> gridSort(AvailableProperties.PropertiesObject obj)
+    {
+        return GridSort<TagInfoContainer>.ByAscending<object>(file => GetParsedValue(obj, file));
+    }
+    /// <summary>
+    /// Get the correct parsed value for sorting (an int if it's a number, otherwise a string)
+    /// </summary>
+    /// <param name="obj">The PropertiesObject of the property to sort</param>
+    /// <param name="file">The TagInfoContainer of the file</param>
+    private object GetParsedValue(AvailableProperties.PropertiesObject obj, TagInfoContainer file)
+    {
+        var temp = TagValueHandler.GetCurrentValue(obj.TagLibProperty, file);
+        if (int.TryParse(temp, out int result))
+        {
+            return result;
+        }
+        return temp;
+    }
+    /// <summary>
+    /// The container of each downloaded file
+    /// </summary>
+    private class DownloadResult
+    {
+        /// <summary>
+        /// If the file has been downloaded using the File System API.
+        /// Currently, this class is used only when this is set to false.
+        /// </summary>
+        public bool fs = false;
+        /// <summary>
+        /// The Blob URL that can be used to download the file
+        /// </summary>
+        public string? url = null;
+        /// <summary>
+        /// The file name
+        /// </summary>
+        public string name = "";
+
+        [JsonConstructor]
+        public DownloadResult(bool fs, string? url, string name)
+        {
+            this.fs = fs;
+            this.url = url;
+            this.name = name;
+        }
+    }
+
+}

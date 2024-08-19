@@ -1,0 +1,263 @@
+@using Microsoft.FluentUI.AspNetCore.Components;
+@using Microsoft.JSInterop;
+@using MetadataChange;
+@inject IJSRuntime JS;
+
+<FluentDialog>
+        <FluentDialogHeader>
+        <div>
+            <h2>Update image content:</h2>
+            <FluentButton Appearance="Appearance.Lightweight" @onclick="() => GetUpdatedList(imageTag, ApplyDestination.DISCARD_EDITS)">X</FluentButton>
+        </div>
+    </FluentDialogHeader>
+    <InputFile OnChange="NextAlbumArt" id="albumArtPicker" style="display: none;" ></InputFile>
+    @if (addImageBytes.Length > 0) {
+        <h3>Encoding options:</h3>
+        <FluentAccordion>
+            <FluentAccordionItem Heading="Encoding Options">
+                        <FluentIcon Value="@(new Icons.Regular.Size24.DrawImage())" Color="@Color.Neutral" Slot="start" />
+                <label class="labelFlex">
+                    JPEG quality:
+        <FluentSlider Min="0.01" Max="1" Step="0.01" @bind-Value="compressionQuality"></FluentSlider><br>
+                </label><br>
+        <label class="labelFlex">
+            Maximum width (in pixels)
+            <FluentTextField type="number" @bind-Value="maxWidth"></FluentTextField>
+        </label><br>
+        <label class="labelFlex">
+            Maximum height (in pixels)
+            <FluentTextField type="number" @bind-Value="maxHeight"></FluentTextField>
+        </label>
+        </FluentAccordionItem>
+        <FluentAccordionItem Heading="Advanced options">
+            <FluentIcon Value="@(new Icons.Regular.Size24.Sparkle())" Color="@Color.Neutral" Slot="start" />
+            <p style="margin-top: 0px;">Album art custom category:</p>
+            <FluentListbox Height="150px" Items="@PicturesType.pictureTypes" OptionText="@(item => item.description)" OptionValue="@(item => item.id.ToString())" @bind-Value="pictureChosenType"></FluentListbox><br>
+            <FluentCheckbox @bind-Value="reEncodeImage">Re-encode the image</FluentCheckbox><br>
+            @if (!reEncodeImage) {
+                <br>
+                <label class="labelFlex">
+                    Image mimetype
+                    <FluentTextField @bind-Value="imageReEncodingMimeType"></FluentTextField>
+                </label>
+            }
+        </FluentAccordionItem>
+        </FluentAccordion><br>
+        <FluentButton @onclick="AddNewImage" Appearance="Appearance.Accent">Add image</FluentButton><br><br>
+    } else if (imageTag.Count > 0)
+    {
+        <FluentSelect Items="@imageTag" OptionValue="@(tag => tag.id)"
+            @onchange='(val) => UpdateSelectedPicture(val.Value.ToString())'
+            OptionText="@(tag => tag.picture.Type + " - " + tag.picture.Description + " [" + tag.id + "]")">
+        </FluentSelect><br><br>
+        <div style="display: flex; justify-content: center;">
+        <img style="max-width: 300px; max-height: 300px;" id="imageSource">
+        </div><br>
+            }
+            @if (addImageBytes.Length == 0) {
+        <div class="flexContainer">
+            <FluentButton @onclick='() => JS.InvokeVoidAsync("clickPictureImage")'>Add new album art</FluentButton>
+            @if (imageTag.Count > 0) {
+            <FluentButton @onclick='RemoveItem'>Remove this album art</FluentButton>
+            }
+            </div><br><br>
+            <div class="flexContainer">
+                <FluentButton Appearance="Appearance.Accent" @onclick="() => GetUpdatedList(imageTag, ApplyDestination.APPLY_CURRENT)">Save (this file)</FluentButton>
+                <FluentButton @onclick="() => GetUpdatedList(imageTag, ApplyDestination.APPLY_SAME_NAME)">Save (files that have the same name)</FluentButton>
+                <FluentButton @onclick="() => GetUpdatedList(imageTag, ApplyDestination.APPLY_SAME_ALBUM)">Save (files with the same album)</FluentButton>
+                <FluentButton @onclick="() => GetUpdatedList(imageTag, ApplyDestination.APPLY_EVERYTHING)">Save (everywhere)</FluentButton>
+            </div>
+            }
+    </FluentDialog>
+    <script>
+        /**
+        * Show the album art in the img element from a byte array
+        */
+        function updateImageSource(bytes) {
+            document.getElementById("imageSource").src = URL.createObjectURL(new Blob([bytes]));
+        }
+        /**
+        * Choose the new image file
+        */
+        function clickPictureImage() {
+            document.getElementById("albumArtPicker").click();
+        }
+        /**
+        * Converts the image in a JPEG, following the provided values: a byte array, the image quality, the maximum height and the maximum width
+        */
+        function getImageBlob(bytes, quality, maxHeight, maxWidth) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement("canvas");
+                    // Format output width/height
+                    if ((img.width > img.height && img.width > +maxWidth) || img.height > +maxHeight) {
+                        canvas.width = img.width > img.height ? +maxWidth : Math.floor(+maxHeight * (img.width / img.height));
+                        canvas.height = img.width > img.height ? Math.floor(+maxWidth / (img.width / img.height)) : +maxHeight;
+                    } else {
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                    }
+                    canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+                    canvas.toBlob((blob) => {
+                        blob.arrayBuffer().then((buffer) => resolve(new Uint8Array(buffer))); 
+                    }, "image/jpeg", +quality)
+                }
+                img.onerror = () => {
+                    console.warn(img.src);
+                    resolve(new Uint8Array([]));
+                }
+                img.src = URL.createObjectURL(new Blob([bytes]));
+            })
+        }
+    </script>
+
+    @code {
+        /// <summary>
+        /// The list of pictures of the current tag
+        /// </summary>
+    [Parameter]
+    public required TagLib.IPicture[] imageTags { get; set; }
+    /// <summary>
+    /// The callback to close the dialog. Note that this callbacks needs to handle also adding the image (that are in the first param passed). The ApplyDestination object indicates what should be done about the new image tags.
+    /// </summary>
+    [Parameter]
+    public required Action<List<ImageTagCount>, ApplyDestination> GetUpdatedList { get; set; }
+    /// <summary>
+    /// The list of the images to add to the currently-selected tag
+    /// </summary>
+    private List<ImageTagCount> imageTag = new List<ImageTagCount>();
+    /// <summary>
+    /// The byte array of the selected image.
+    /// If this is empty, the UI will show the already-added images. Otherwise, the image compression UI will be shown (so that the user can add the albunm art).
+    /// </summary>
+        private byte[] addImageBytes = [];
+    /// <summary>
+    /// The position in the "imageTags" array of the image the user is seeing
+    /// </summary>
+
+    private int selectedImage = 0;
+    /// <summary>
+    /// The quality of the output JPEG Image
+    /// </summary>
+    private double compressionQuality = 0.9;
+     /// <summary>
+    /// The maximum height of the JPEG image
+    /// </summary>
+    private string maxHeight = "700";
+    /// <summary>
+    /// The maximum width of the JPEG image
+    /// </summary>
+    private string maxWidth = "700";
+    /// <summary>
+    /// The ID of the image category of the new image
+    /// </summary>
+    private string pictureChosenType = "0";
+    /// <summary>
+    /// If the new image should be re-encoded
+    /// </summary>
+    private bool reEncodeImage = true;
+    /// <summary>
+    /// The mimetype of the provided image. This is used only if the user provides their own image, and doesn't want to re-encode it.
+    /// </summary>
+    private string imageReEncodingMimeType = "";
+
+    protected override void OnAfterRender(bool firstRender) {
+        base.OnAfterRender(firstRender);
+        ReadImage();
+    }
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        for (int i = 0; i < imageTags.Length; i++)
+        {
+            imageTag.Add(new ImageTagCount(imageTags[i], i.ToString())); // Populate the array of available images
+        }
+    }
+    /// <summary>
+    /// Remove an album art from the file
+    /// </summary>
+    private async Task RemoveItem() {
+        imageTag.RemoveAt(selectedImage);
+        for (int i = 0; i < imageTag.Count; i++) imageTag[i].id = i.ToString();
+    }
+    /// <summary>
+    /// Create a TagLib.Picture for the selected image, and add it to the array. 
+    /// </summary>
+    private async Task AddNewImage() {
+        byte[] reEncodedCanvas = reEncodeImage ? await JS.InvokeAsync<byte[]>("getImageBlob", [addImageBytes, compressionQuality, maxHeight, maxWidth]) : addImageBytes; // The re-encoding is done using JavaScript's Canvas API
+            if (reEncodedCanvas.Length > 0) {
+            TagLib.Picture picture = new TagLib.Picture();
+            picture.Type = (TagLib.PictureType) int.Parse(pictureChosenType);
+            picture.MimeType = reEncodeImage ? "image/jpeg" : imageReEncodingMimeType;
+            picture.Data = reEncodedCanvas;
+            imageTag.Add(new ImageTagCount(picture, imageTag.Count.ToString()));
+            }
+            addImageBytes = []; // By making this blank, the UI will go back to showing the available images
+    }
+    /// <summary>
+    /// The callback called when the user has selected a new album art to add. The only thing this does is converting the InputFileEventArg to a Byte[]
+    /// </summary>
+    private async Task NextAlbumArt(InputFileChangeEventArgs e) {
+        Stream copyStream = e.File.OpenReadStream(maxAllowedSize: 1024 * 1024 * 1024);
+        using MemoryStream stream = new MemoryStream();
+        await copyStream.CopyToAsync(stream);
+        addImageBytes = stream.ToArray();
+    }
+    /// <summary>
+    /// By providing the ID of the image, this image will be shown
+    /// <param name="value">A string that is the same value of the ID (so, the position in the array)</param>
+    /// </summary>
+    private async Task UpdateSelectedPicture(string value)
+    {
+        selectedImage = int.Parse(value);
+        ReadImage();
+    }
+    /// <summary>
+    /// Update the image HTMLElement with the selected image
+    /// </summary>
+    private async Task ReadImage()
+    {
+        await JS.InvokeVoidAsync("wakeUp"); // For some reason, I need to call a void before updating the image. Otherwise, the next void isn't executed.
+        await JS.InvokeVoidAsync("updateImageSource", [imageTag[selectedImage].picture.Data.ToArray()]);
+    }
+    /// <summary>
+    /// The class that contains all the necessary items for the TagLib.IPicture edit
+    /// </summary>
+    /// <param name="picture">The image interface, ready for TagLib</param>
+    /// <param name="id">An ID for the current image. Currently, this is the entry in the List.</param>
+    public class ImageTagCount(TagLib.IPicture picture, string id)
+    {
+        /// <summary>
+        /// The image interface, ready for TagLib
+        /// </summary>
+        public TagLib.IPicture picture = picture;
+        /// <summary>
+        /// An ID for the current image. Currently, this is the entry in the List.
+        /// </summary>
+        public String id = id;
+    }
+    /// <summary>
+    /// The enum that tells the main script what should be done with the new edits
+    /// </summary>
+    public enum ApplyDestination {
+        /// <summary>
+        /// The user has closed the dialog without saving. Discard all the edits.
+        /// </summary>
+        DISCARD_EDITS = -1,
+        /// <summary>
+        /// Apply the new edits only to the current file
+        /// </summary>
+        APPLY_CURRENT = 0,
+        /// <summary>
+        /// Apply the new edits to every file
+        /// </summary>
+        APPLY_EVERYTHING = 1,
+        /// <summary>
+        /// Apply the new edits to the files that have the same file name
+        /// </summary>
+        APPLY_SAME_NAME = 2,
+        APPLY_SAME_ALBUM = 3
+    }
+}

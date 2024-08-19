@@ -1,0 +1,191 @@
+@using Microsoft.FluentUI.AspNetCore.Components;
+@using MetadataChange;
+
+<FluentDialog>
+    <FluentDialogHeader>
+        <div>
+            <h2>Custom metadata:</h2>
+            <FluentButton Appearance="Appearance.Lightweight" @onclick="() => Callback()">X
+            </FluentButton>
+        </div>
+    </FluentDialogHeader>
+    <p style="margin-top: 0px;">Choose the metadata container from below:</p>
+    <FluentSelect Items="ChangeCustomValue" OptionText="@(item => item.Key)"
+        OptionValue="@(item => ((int) item.Value).ToString())" @bind-Value="ContainerSelectBinding"></FluentSelect>
+    <br><br>
+    @if (ContainerSelectBinding == "1")
+    {
+        <label class="labelFlex">Meanstring (tip: leave this as it is): <FluentTextField @bind-Value="meanstring">
+            </FluentTextField></label>
+
+        <br>
+    }
+    else if (ContainerSelectBinding == "8")
+    {
+        <label class="labelFlex">Namespace: <FluentTextField @bind-Value="meanstring">
+            </FluentTextField></label>
+
+        <br>
+    }
+    <label class="labelFlex">Key: <FluentTextField @bind-Value="key"></FluentTextField></label><br>
+    <label class="labelFlex">Value: <FluentTextField @bind-Value="value"></FluentTextField></label><br>
+    <div class="flexContainer">
+        <FluentButton Appearance="Appearance.Accent" @onclick="() => SaveFile(false)">Apply</FluentButton>
+        <FluentButton @onclick="() => SaveFile(true)">Apply to everything
+        </FluentButton>
+    </div>
+</FluentDialog>
+
+@code {
+    /// <summary>
+    /// The position of the file that'll be
+    /// </summary>
+
+    [Parameter]
+    public required int CurrentFile { get; set; }
+    /// <summary>
+    /// The Action called to close the dialog
+    /// </summary>
+    [Parameter]
+    public required Action Callback { get; set; }
+    /// <summary>
+    /// All the files that the user has selected
+    /// </summary>
+    [Parameter]
+    public required List<TagInfoContainer> AvailableTags { get; set; }
+    /// <summary>
+    /// The key of the new metadata
+    /// </summary>
+    private string key = "";
+    /// <summary>
+    /// The value of the new metadata
+    /// </summary>
+    private string value = "";
+    /// <summary>
+    /// Meanstring used as an identifier for Apple tags
+    /// </summary>
+    private string meanstring = "com.apple.iTunes";
+    /// <summary>
+    /// The ID of the selected container
+    /// </summary>
+    private string ContainerSelectBinding = "0";
+    /// <summary>
+    /// A Dictionary that contains the description as a key, and the tag enum as the value
+    /// </summary>
+    private Dictionary<string, CustomMetadataFormat.CustomMetadataTypes> ChangeCustomValue = new Dictionary<string,
+    CustomMetadataFormat.CustomMetadataTypes> {
+{"APE Tags", CustomMetadataFormat.CustomMetadataTypes.APE},
+{"MP4 Tags (Apple)", CustomMetadataFormat.CustomMetadataTypes.APPLE},
+{"ASF Tags (WMA/WMW/DivX)", CustomMetadataFormat.CustomMetadataTypes.ASF},
+{"ID3v2 Tags (MP3 files)", CustomMetadataFormat.CustomMetadataTypes.ID3},
+{"Matroska Tags (MKV and WebM)", CustomMetadataFormat.CustomMetadataTypes.MATROSKA},
+{"Xiph Tags (OGG)", CustomMetadataFormat.CustomMetadataTypes.XIPH},
+{"PNG Image", CustomMetadataFormat.CustomMetadataTypes.PNG},
+{"RIFF Movie Tag", CustomMetadataFormat.CustomMetadataTypes.RIFF},
+{"XMP Image Tag (Lots of image formats)", CustomMetadataFormat.CustomMetadataTypes.XMP},
+};
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        // Update the suggested container
+        string type = AvailableTags[CurrentFile].tag.TagTypes.ToString().ToLower();
+        CustomMetadataFormat.CustomMetadataTypes? tempType = CustomMetadataFormat.GetSuggestedContainer(type);
+        if (tempType != null) ContainerSelectBinding = ((int)tempType).ToString();
+    }
+    /// <summary>
+    /// Save the custom metadata tag, and close the dialog
+    /// <param name="SaveMultiple">If the custom metadata should be applied to every file</param>
+    /// </summary>
+    private async void SaveFile(bool SaveMultiple)
+    {
+        if (SaveMultiple)
+        {
+            foreach (TagInfoContainer container in AvailableTags)
+            {
+                // Get the new suggested type for the file
+                string type = container.tag.TagTypes.ToString().ToLower();
+                CustomMetadataFormat.CustomMetadataTypes? tempType = CustomMetadataFormat.GetSuggestedContainer(type);
+                if (tempType != null)
+                {
+                    ContainerSelectBinding = ((int)tempType).ToString(); // This is done to update the UI
+                    UpdateCustomValueHandle((CustomMetadataFormat.CustomMetadataTypes)int.Parse(ContainerSelectBinding), container.tag);
+                }
+            }
+        }
+        else UpdateCustomValueHandle((CustomMetadataFormat.CustomMetadataTypes)int.Parse(ContainerSelectBinding),
+        AvailableTags[CurrentFile].tag); // Update single files
+        Callback();
+    }
+    /// <summary>
+    /// The void that adds the custom metadata to the supported containers
+    /// <param name="type">The CustomMetadataTypes enum of the container</param>
+    /// <param name="file">The TagLib.File where the new metadata will be applied</param>
+    /// </summary>
+    private void UpdateCustomValueHandle(CustomMetadataFormat.CustomMetadataTypes type, TagLib.File file)
+    {
+        switch (type)
+        {
+            case CustomMetadataFormat.CustomMetadataTypes.APE:
+                {
+                    TagLib.Ape.Tag tag = (TagLib.Ape.Tag)file.GetTag(TagLib.TagTypes.Ape, true);
+                    tag.SetValue(key, value);
+                    break;
+                }
+            case CustomMetadataFormat.CustomMetadataTypes.APPLE:
+                {
+                    TagLib.Mpeg4.AppleTag tag = (TagLib.Mpeg4.AppleTag)file.GetTag(TagLib.TagTypes.Apple, true);
+                    tag.SetDashBox(meanstring, key, value);
+                    break;
+                }
+            case CustomMetadataFormat.CustomMetadataTypes.ASF:
+                {
+                    TagLib.Asf.Tag tag = (TagLib.Asf.Tag)file.GetTag(TagLib.TagTypes.Asf, true);
+                    tag.SetDescriptorString(value, [key]);
+                    break;
+                }
+            case CustomMetadataFormat.CustomMetadataTypes.ID3:
+                {
+                    TagLib.Id3v2.Tag metadata = (TagLib.Id3v2.Tag)file.GetTag(TagLib.TagTypes.Id3v2, true);
+                    TagLib.Id3v2.PrivateFrame privateFrame = TagLib.Id3v2.PrivateFrame.Get(metadata, key, true);
+                    privateFrame.PrivateData = TagLib.ByteVector.FromString(value);
+                    break;
+                }
+            case CustomMetadataFormat.CustomMetadataTypes.MATROSKA:
+                {
+
+                    TagLib.Matroska.Tag tag = (TagLib.Matroska.Tag)file.GetTag(TagLib.TagTypes.Matroska, true);
+                    tag.Set(key, null, value);
+                    break;
+                }
+            case CustomMetadataFormat.CustomMetadataTypes.XIPH:
+                {
+                    TagLib.Ogg.XiphComment tag = (TagLib.Ogg.XiphComment)file.GetTag(TagLib.TagTypes.Xiph, true);
+                    tag.SetField(key, [value]);
+                    break;
+                }
+            case CustomMetadataFormat.CustomMetadataTypes.PNG:
+                {
+                    TagLib.Png.PngTag tag = (TagLib.Png.PngTag)file.GetTag(TagLib.TagTypes.Png, true);
+                    tag.SetKeyword(key, value);
+                    break;
+                }
+            case CustomMetadataFormat.CustomMetadataTypes.RIFF:
+                {
+                    TagLib.Riff.MovieIdTag tag = (TagLib.Riff.MovieIdTag)file.GetTag(TagLib.TagTypes.MovieId, true);
+                    tag.SetValue(TagLib.ByteVector.FromString(key), new TagLib.ByteVectorCollection(){
+TagLib.ByteVector.FromString(value)
+});
+                    break;
+                }
+            case CustomMetadataFormat.CustomMetadataTypes.XMP:
+                {
+                    TagLib.Xmp.XmpTag tag = (TagLib.Xmp.XmpTag)file.GetTag(TagLib.TagTypes.XMP, true);
+                    tag.SetTextNode(meanstring, key, value);
+                    break;
+                }
+        }
+    }
+
+
+}
