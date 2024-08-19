@@ -69,8 +69,21 @@
                             {
                                 <TemplateColumn Width="@((100 /(gridSelected.Count + 2)) + "%")" SortBy="gridSort(metadata)"
                                     Title="@metadata.DisplayName" Sortable="true">
-                                    <FluentTextField Value="@TagValueHandler.GetCurrentValue(metadata.TagLibProperty, context)"
-                                        @onchange='(val) => UpdateValueFromEvent(val, metadata, context)' />
+                                    @if (metadata.ConvertValue ==
+                        AvailableProperties.PropertiesObject.PropertiesType.STRING_TEXTAREA)
+                                    {
+                                        <FluentTextArea @onchange="(val) => UpdateValueFromEvent(val, metadata, context)"
+                                            value=@(TagValueHandler.GetCurrentValue(metadata.TagLibProperty, context))>
+                                        </FluentTextArea>
+                                    }
+                                    else
+                                    {
+                                        <FluentTextField @onchange="(val) => UpdateValueFromEvent(val, metadata, context)"
+                                            value=@(TagValueHandler.GetCurrentValue(metadata.TagLibProperty, context))
+                                            type=@(metadata.ConvertValue == AvailableProperties.PropertiesObject.PropertiesType.UINT ?
+                            "number" : "text")>
+                                        </FluentTextField>
+                                    }
                                 </TemplateColumn>
                             }
                         </FluentDataGrid><br>
