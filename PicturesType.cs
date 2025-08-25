@@ -23,6 +23,7 @@ namespace MetadataChange
         /// </summary>
         public static List<PictureContent> pictureTypes = [
             new(8, "Artist image"),
+            new(3, "Front cover"),
         new(4, "Back cover"),
         new(10, "Band/orchestra image"),
         new(19, "Band/performer logo"),

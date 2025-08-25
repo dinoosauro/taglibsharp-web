@@ -14,8 +14,8 @@
     <FluentDialogHeader>
         <div>
             <h2>Settings:</h2>
-            <FluentButton Appearance="Appearance.Lightweight" @onclick="() => Callback()">X
-            </FluentButton>
+            <FluentButton Id="CloseDialogBtn" Appearance="Appearance.Lightweight" @onclick="() => Callback()" IconStart="@(new Icons.Regular.Size20.Dismiss())"></FluentButton>
+            <FluentTooltip Anchor="CloseDialogBtn" Position="TooltipPosition.Left">Close the dialog, saving the settings.</FluentTooltip>
         </div>
     </FluentDialogHeader>
     <h3>Change theme:</h3>
@@ -25,7 +25,7 @@
         <FluentButton Appearance="Appearance.Lightweight" style="width: fit-content"
             @onclick='() => JS.InvokeVoidAsync("updateSlider", [updateTheme.ToString()])'>
             Apply</FluentButton>
-    </div>
+    </div><br>
     <label class="labelFlex">
         Custom color:
         <FluentTextField type="color" Value="@currentlySelectedColor" @onchange='(e) => {

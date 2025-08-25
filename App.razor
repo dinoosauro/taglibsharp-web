@@ -18,12 +18,10 @@
             </div>
             <p>Edit all the metadata of an audio or video file using TagLib Sharp</p>
         </header><br>
-        <FluentButton style="position: absolute; top: 15px; width: fit-content; right: 15px;"
+        <FluentButton Id="settingsBtn" style="position: absolute; top: 15px; width: fit-content; right: 15px;"
             IconStart="@(new Icons.Regular.Size20.Settings())" Appearance="Appearance.Accent"
             @onclick='() => {showSettings = true;}'></FluentButton>
-        <InputFile directory="@pickFolder" webkitdirectory="@pickFolder" multiple="true" id="filePicker"
-            style="display: none;" OnChange="GetFiles">
-        </InputFile>
+            <FluentTooltip Anchor="settingsBtn" Position="TooltipPosition.Left">Show settings</FluentTooltip>
         <FluentToastProvider MaxToastCount="1" />
         @if (files.Count != 0)
         {
@@ -32,7 +30,7 @@
                 @if (showGrid)
                 {
                     <p>Choose the fields to show in the table:</p>
-                    <FluentListbox Items=@(AvailableProperties.AvailableMetadata) Multiple="true" Height="15vh"
+                    <FluentListbox Items=@(AvailableProperties.AvailableMetadata) Multiple="true" Height="20vh"
                         TOption="AvailableProperties.PropertiesObject" OptionText="@(file => file.DisplayName)"
                         SelectedOptionsChanged="(file) => {
                                     gridSelected = file.ToList();
@@ -41,23 +39,33 @@
                     </FluentListbox>
                     <br>
                     <br>
-                    <FluentCard style="background: var(--neutral-fill-active);">
-                        <FluentCheckbox @bind-Value="@updateEverything">Update all the
-                            seleted
-                            files</FluentCheckbox><br>
+                    <FluentCard style="background: var(--neutral-fill-active);" AreaRestricted="false">
+                        <FluentSelect Appearance="Appearance.Outline" TOption="string" @onchange="UpdateMultipleOptions">
+                            <FluentOption Value="-1">Update only this entry</FluentOption>
+                            <FluentOption Value="0">Update all items</FluentOption>
+                            <FluentOption Value="1">Update the files with the same album</FluentOption>
+                            <FluentOption Value="2">Update the files with the same album (only common values)</FluentOption>
+                        </FluentSelect><br><br>
                         <FluentDataGrid ResizableColumns="true" ResizeType="DataGridResizeType.Discrete"
                             Items="files.AsQueryable<TagInfoContainer>()" ItemKey="@(file => file.id)">
                             <TemplateColumn Width="@((100 /(gridSelected.Count + 2)) + "%")" Sortable="false" Title="Actions:">
                                 <div class="flexContainer">
-                                    <FluentButton IconStart="@(new Icons.Regular.Size20.Image())" @onclick='@(() => {
+                                    <FluentButton Id="@($"{context.id}customImage")" IconStart="@(new Icons.Regular.Size20.Image())" @onclick='@(() => {
                                         fileEditPosition = int.Parse(@context.id);
                                         showImageDialog = true;
                                     })'>
                                     </FluentButton>
-                                    <FluentButton IconStart="@(new Icons.Regular.Size20.StarEdit())" @onclick='@(() => {
+                                    <FluentTooltip Anchor="@($"{context.id}customImage")" Position="TooltipPosition.Bottom">Change album art</FluentTooltip>
+                                    <FluentButton Id="@($"{context.id}customMetadata")" IconStart="@(new Icons.Regular.Size20.StarEdit())" @onclick='@(() => {
                                     fileEditPosition = int.Parse(@context.id);
                                     showCustomMetadata = true;
                                 })'></FluentButton>
+                                    <FluentTooltip Anchor="@($"{context.id}customMetadata")" Position="TooltipPosition.Bottom">Add custom metadata & advanced metadata view</FluentTooltip>
+                                    <FluentButton Id="@($"{context.id}customLyrics")" OnClick='@(() => {
+                                        fileEditPosition = int.Parse(@context.id);
+                                        showUploadLyricsDialog = true;
+                                    })' IconStart="@(new Icons.Regular.Size20.AttachText())"></FluentButton>
+                                    <FluentTooltip Anchor="@($"{context.id}customLyrics")" Position="TooltipPosition.Bottom">Fetch lyrics online, or add them from a local file</FluentTooltip>
                                 </div>
                             </TemplateColumn>
                             <TemplateColumn Width="@((100 /(gridSelected.Count + 2)) + "%")"
@@ -88,7 +96,7 @@
                                 </TemplateColumn>
                             }
                         </FluentDataGrid><br>
-                        <FluentButton @onclick='() => JS.InvokeVoidAsync("clickInput")' Appearance="Appearance.Lightweight">Add
+                            <FluentButton @onclick='() => {showUploadDialog = true;}' Appearance="Appearance.Lightweight">Add
                             files</FluentButton>
                     </FluentCard>
                 }
@@ -98,7 +106,7 @@
                         <FluentSelect @onchange="(val) => {fileEditPosition = int.Parse(val.Value.ToString());}" Items="files "
                             OptionValue="@(file => file.id)" OptionText="@(file => file.file)"></FluentSelect>
                         <FluentButton Appearance="Appearance.Accent" style="width: fit-content"
-                            @onclick='() => JS.InvokeVoidAsync("clickInput")'>+
+                            @onclick='() => {showUploadDialog = true;}'>+
                         </FluentButton>
                     </div>
                     <p>Choose a property to edit about the metadata</p>
@@ -110,7 +118,7 @@
                     <br>
 
                     <br>
-                    <FluentCard style="background: var(--neutral-fill-active);">
+                    <FluentCard style="background: var(--neutral-fill-active);" AreaRestricted="false">
                         @if (selectedItem.ConvertValue ==
                        AvailableProperties.PropertiesObject.PropertiesType.STRING_TEXTAREA)
                         {
@@ -127,10 +135,12 @@
                             </FluentTextField>
                         }
                         <br><br>
-                        <FluentCheckbox @bind-Value="@updateEverything"
-                            @onchange="() => UpdateValueForEverything(selectedItem)">Update all the
-                            seleted
-                            files</FluentCheckbox>
+                        <FluentSelect TOption="string" Appearance="Appearance.Outline" @onchange="UpdateMultipleOptions">
+                            <FluentOption Value="-1">Update only this entry</FluentOption>
+                            <FluentOption Value="0">Update all items</FluentOption>
+                            <FluentOption Value="1">Update the files with the same album</FluentOption>
+                            <FluentOption Value="2">Update the files with the same album (only common values)</FluentOption>
+                        </FluentSelect>
                     </FluentCard>
 
                 }
@@ -138,10 +148,11 @@
                 <div class="flexContainer">
                     @if (!showGrid)
                     {
-                        <FluentButton @onclick='() => {showImageDialog = true;}' Appearance="Appearance.Accent">Change album art
-                        </FluentButton>
-                        <FluentButton @onclick='() => {showCustomMetadata = true;}'>Add custom
-                            metadata</FluentButton>
+                        <FluentMenuButton Text="Edit other metadata" Items="advancedMetadataSettings" ButtonAppearance="Appearance.Accent" OnMenuChanged='@((arg) => {
+                            showImageDialog = arg.Id == "0";
+                            showCustomMetadata = arg.Id == "1";
+                            showUploadLyricsDialog = arg.Id == "2";
+                        })'></FluentMenuButton>
                     }
                     <FluentButton Appearance="@(showGrid ? Appearance.Accent : Appearance.Outline)"
                         @onclick='() => {showCopyMetadata = true;}'>Copy
@@ -180,13 +191,13 @@
                     <FluentSelect @bind-Value="selectedFileDownload" TOption="DownloadResult"
                         OptionValue="@(file => file.url)" OptionText="@(file => file.name)" Items="redownloadFiles">
                     </FluentSelect>
-                    <FluentButton style="width: fit-content;" Appearance="Appearance.Accent" @onclick='async () => {
+                    <FluentButton Id="DeleteDownloadFile" style="width: fit-content;" Appearance="Appearance.Accent" @onclick='async () => {
                         redownloadFiles.Remove(redownloadFiles.Find(file => file.url == selectedFileDownload));
                         await JS.InvokeVoidAsync("revokeUrl", [selectedFileDownload]);
                         selectedFileDownload = "";
-
                     }' IconStart="@(new Icons.Regular.Size20.Delete())">
                     </FluentButton>
+                    <FluentTooltip Anchor="DeleteDownloadFile" Position="TooltipPosition.Left">Delete file from RAM (not from your drive)</FluentTooltip>
                 </div><br>
                 @if (selectedFileDownload != "" && selectedFileDownload != null)
                 {
@@ -197,7 +208,10 @@
             @if (showImageDialog)
             {
                 <MetadataChange.Layout.ImageElement imageTags="@(files[fileEditPosition].tag.Tag.Pictures)"
-                    GetUpdatedList="UpdateAlbumArt">
+                    Callback="@(() => {
+                        showImageDialog = false;
+                        StateHasChanged();
+                    })" files="@files" fileEditPosition="@fileEditPosition" DownloadFile="async (byte[] bytes, string str) => await DownloadFile(bytes, str)">
                 </MetadataChange.Layout.ImageElement>
             }
             @if (showCustomMetadata)
@@ -205,7 +219,7 @@
                 <CustomMetadata AvailableTags="files" Callback="() => {
                     showCustomMetadata = false;
                      StateHasChanged();
-                }" CurrentFile="fileEditPosition">
+                }" CurrentFile="fileEditPosition" DownloadFileAction="async (byte[] bytes, string str) => await DownloadFile(bytes, str)">
                 </CustomMetadata>
             }
             @if (showCopyMetadata)
@@ -216,14 +230,22 @@
                 }">
                 </MetadataCopy>
             }
+            @if (showUploadLyricsDialog) {
+                <UploadLyrics Container="files" CurrentPosition="@fileEditPosition.ToString()" Callback="() => {
+                    showUploadLyricsDialog = false;
+                    StateHasChanged();
+                }" RerenderState="() => {
+                if (!showUploadLyricsDialog) StateHasChanged();
+                }" DownloadFile="DownloadLrcZipFile"></UploadLyrics>
+            }
         }
         else
         {
             <FluentCard>
                 <h2>Choose files:</h2>
-                <FluentButton @onclick='() => JS.InvokeVoidAsync("clickInput")'>Choose files</FluentButton><br><br>
-                <FluentCheckbox @bind-Value="pickFolder">Choose a directory</FluentCheckbox><br>
-                <p>Don't worry. Everything will be elaborated locally</p>
+                <MainFileInput GetFiles="GetFiles"></MainFileInput>
+             <br>
+                <p>Don't worry. Everything will be elaborated locally.</p>
             </FluentCard>
         }
         @if (showSettings)
@@ -241,18 +263,30 @@
                 StateHasChanged();
             }"></Licenses>
         }
+        @if (showUploadDialog) {
+            <FluentDialog>
+                <FluentDialogHeader>
+                    <div>
+                        <h2>Pick files:</h2>
+                        <FluentButton Id="CloseDialogBtn" Appearance="Appearance.Lightweight" @onclick="() => {showUploadDialog = false;}" IconStart="@(new Icons.Regular.Size20.Dismiss())"></FluentButton>
+                        <FluentTooltip Anchor="CloseDialogBtn" Position="TooltipPosition.Left">Close the dialog</FluentTooltip>
+                    </div>
+                </FluentDialogHeader>
+                <MainFileInput GetFiles="GetFiles"></MainFileInput>
+            </FluentDialog>
+        }
         <br>
         <FluentCard>
             <h2>Credits:</h2>
-            <p>Website made with <a href="https://github.com/dotnet/aspnetcore" target="_blank">Blazor WebAssembly</a>
-                and the <a target="_blank" href="https://github.com/mono/taglib-sharp">TagLib-Sharp library</a>. This
+            <p>Website made with <a href="https://github.com/dotnet/aspnetcore" target="_blank">Blazor WebAssembly</a>, the <a target="_blank" href="https://github.com/mono/taglib-sharp">TagLib-Sharp library</a> and the <a href="https://github.com/JamesNK/Newtonsoft.Json" target="_blank">Newtonsoft.Json library</a>. This
                 project is in no way affiliated with TagLib-Sharp.</p><br>
-            <a style="margin-right: 10px;" href="https://github.com/dinoosauro/taglibweb-sharp" target="_blank">View on
+            <a style="margin-right: 10px;" href="https://github.com/dinoosauro/taglibsharp-web" target="_blank">View on
                 GitHub</a>
             <label style="text-decoration: underline;" class="hover" @onclick="() => {showLicenses = true;}">View
                 licenses</label>
         </FluentCard>
     </div>
+    <FluentTooltipProvider />
 </FluentDesignSystemProvider>
 
 <script>
@@ -261,29 +295,40 @@
     If this value isn't nullish, the next files will be saved there.
     */
     let directoryHandle;
+    /**
+    Get a valid file name for the OS
+    */
+    function getFileName(name) {
+        return name.trim().replaceAll("/", "⧸").replaceAll("\\", "⧹").replaceAll("?", "ʔ").replaceAll("*", "＊").replaceAll(":", "꞉").replaceAll("|", "∣").replaceAll("\"", "'").replaceAll("<", "˂").replaceAll(">", "˃");
+    }
     async function downloadByteArray(byte, name, useDirectoryHandle) {
         // The values returned are [The link (or null if the File System API has been used), the file name, "0" if the File System API has been used, or "1" if it hasn't been used]
         if (useDirectoryHandle && typeof (window.showDirectoryPicker) !== "undefined") {
             if (!directoryHandle) directoryHandle = await window.showDirectoryPicker({ mode: "readwrite", id: "TagLibWeb-Picker" });
-            const handle = await directoryHandle.getFileHandle(name, { create: true });
+            // We'll now navigate through all the subdirectories to save that file
+            let directoryHandleToUse = directoryHandle;
+            const splitFile = name.split("/");
+            const outputName = splitFile.pop();
+            for (const path of splitFile) directoryHandleToUse = await directoryHandleToUse.getDirectoryHandle(path, {create: true});
+            const handle = await directoryHandleToUse.getFileHandle(getFileName(outputName), { create: true });
             const writable = await handle.createWritable();
             await writable.write(byte);
             await writable.close();
             return [null, name, "0"];
         } else if (localStorage.getItem("TagLibWeb-UseFS") !== "b" && typeof (window.showSaveFilePicker) !== "undefined") {
             try {
-                const handle = await window.showSaveFilePicker({ id: "TagLibWeb-Picker", suggestedName: name });
+                const handle = await window.showSaveFilePicker({ id: "TagLibWeb-Picker", suggestedName: name.indexOf("/") !== -1 ? getFileName(name.substring(name.lastIndexOf("/") + 1)) : getFileName(name) });
                 const writable = await handle.createWritable();
                 await writable.write(byte);
                 await writable.close();
                 return [null, name, "0"];
             } catch (ex) {
-                console.warn("Failed usage of the File System API", ex);
+                console.warn("Failed File System API usage", ex);
             }
         }
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([byte]));
-        a.download = name;
+        a.download = name.indexOf("/") !== -1 ? getFileName(name.substring(name.lastIndexOf("/") + 1)) : getFileName(name);
         a.click();
         return [a.href, name, "1"];
     }
@@ -296,8 +341,21 @@
     /**
     Open new files from the user's drive
     */
-    function clickInput() {
-        document.getElementById("filePicker").click();
+    function clickInput(isDirectory) {
+        if (isDirectory) { 
+            // Since there's no support in Blazor for picking directories, we'll create a new input, update the name to add the directories (the real file name in Blazor memory will still be the temp file created, but the suggested name will be the new one), and finally we'll trigger the onchange event.
+            const input = document.createElement("input");
+            input.type = "file";
+            input.webkitdirectory = true;
+            input.multiple = true;
+            input.onchange = () => {
+                const dataTransfer = new DataTransfer();
+                Array.from(input.files).forEach(item => dataTransfer.items.add(new File([item], item.webkitRelativePath || item.name, {type: item.type})));
+                document.getElementById("fileUploader").files = dataTransfer.files;
+                document.getElementById("fileUploader").dispatchEvent(new Event("change", { bubbles: true }));
+            };
+            input.click();
+        } else document.getElementById("fileUploader").click();
     }
     /**
     Revoke a Blob URL
@@ -308,11 +366,34 @@
 </script>
 
 @code {
+    private enum MultipleUpdateOptions {
+        /// <summary>
+        /// Update only the currently-selected file
+        /// </summary>
+        SINGLE_UPDATE = -1,
+        /// <summary>
+        /// Update all the uploaded audio files
+        /// </summary>
+        UPDATE_EVERYTHING = 0,
+        /// <summary>
+        /// Update all the files with the same album name
+        /// </summary>
+        UPDATE_ALBUM = 1,
+        /// <summary>
+        /// Update all the files with the same album name, only if the selected field isn't track-specific (ex: track title, etc.)
+        /// </summary>
+        UPDATE_COMMON_ALBUM = 2
+    }
+    /// <summary>
+    /// What the application should do when an entry is updated
+    /// </summary>
+    private MultipleUpdateOptions IntelligentAlbumUpdate = MultipleUpdateOptions.SINGLE_UPDATE;
 
     /// <summary>
-    /// If the current value should be applied to all the items
+    /// If the "Lyrics upload" dialog should be shown or not
     /// </summary>
-    private bool updateEverything = false;
+    public bool showUploadLyricsDialog = false;
+
     /// <summary>
     /// If the album art editor should be shown
     /// </summary>
@@ -338,9 +419,9 @@
     /// </summary>
     private bool showGrid = true;
     /// <summary>
-    /// Pick a directory instead of multiple files
+    /// Show the dialog where the user can upload more files
     /// </summary>
-    private bool pickFolder = false;
+    private bool showUploadDialog = false;
     /// <summary>
     /// A list that contains all the selected tag options
     /// </summary>
@@ -369,7 +450,14 @@
     /// The URL of the link to download the currently-selected file (in the "Redownload files" tab)
     /// </summary>
     private string selectedFileDownload = "";
-
+    /// <summary>
+    /// The Dictionary used in the FluentMenuButton to access custom dialogs in the "Single metadata" view
+    /// </summary>
+    private Dictionary<string, string> advancedMetadataSettings = new(){
+        {"0", "Change album art"},
+        {"1", "Add custom metadata & advanced metadata view"},
+        {"2", "Fetch lyrics online, or add them from a local file"}
+    };
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
@@ -383,49 +471,21 @@
     }
 
     /// <summary>
-    /// Update the Album Art for the selected items
+    /// The callback used by the Lyrics dialog to download the zip file with synced, unsynced lyrics and the LRCLIB's JSON response.
     /// </summary>
-    /// <param name="images">A list of the new images to add</param>
-    /// <param name="destination">If the image should be applied only to the selected image, to everything, or if the edits
-    /// should be discarded.</param>
-    private void UpdateAlbumArt(List<ImageElement.ImageTagCount> images, ImageElement.ApplyDestination destination)
-    {
-        TagLib.IPicture[] pictures = images.Select(item => item.picture).ToArray();
-        switch (destination)
-        {
-            case ImageElement.ApplyDestination.APPLY_CURRENT:
-                files[fileEditPosition].tag.Tag.Pictures = pictures;
-                break;
-            case ImageElement.ApplyDestination.APPLY_EVERYTHING:
-                foreach (TagInfoContainer file in files) file.tag.Tag.Pictures = pictures;
-                break;
-            case ImageElement.ApplyDestination.APPLY_SAME_NAME:
-                var dictionary = (new GetFilesWithSameName(files)).allowedValues;
-                if (dictionary.TryGetValue(files[fileEditPosition].file.Substring(0, files[fileEditPosition].file.LastIndexOf(".")), out
-                List<TagInfoContainer> applyToThis))
-                {
-                    foreach (TagInfoContainer apply in applyToThis) apply.tag.Tag.Pictures = pictures;
-                }
-                break;
-            case ImageElement.ApplyDestination.APPLY_SAME_ALBUM:
-                foreach (TagInfoContainer file in files)
-                {
-                    if (file.tag.Tag.Album == files[fileEditPosition].tag.Tag.Album) file.tag.Tag.Pictures = pictures;
-                }
-                break;
-
+    private async void DownloadLrcZipFile(byte[] bytes) {
+        string?[] result = await DownloadFile(bytes, $"LRCContent-{DateTime.Now.ToString().Replace("/", "-")}.zip");
+        if (result != null) {
+            ToastService.ClearProgressToasts();
+            ToastService.ShowProgress("Downloaded lyrics zip file", 3000);
         }
-        showImageDialog = false;
-        StateHasChanged();
     }
-    /// <summary>
-    /// Apply the currently selected values to all the items
-    /// </summary>
-    private void UpdateValueForEverything(AvailableProperties.PropertiesObject item)
-    {
-        if (updateEverything) TagValueHandler.SetCurrentValue(TagValueHandler.GetCurrentValue(item.TagLibProperty,
-        files[fileEditPosition]), files,
-        item);
+
+        /// <summary>
+        /// If true, the currently-edited value is not a track-specific value (ex: track title, track position etc.), and can be applied to all the albums.
+        /// </summary>
+    private bool EnsureNotCommonValue(AvailableProperties.PropertiesObject item) {
+        return item.TagLibProperty != "Track" && item.TagLibProperty != "Composers" && item.TagLibProperty != "Performers" && item.TagLibProperty != "Comment" && item.TagLibProperty != "ComposersSort" && item.TagLibProperty != "Conductor" && item.TagLibProperty != "Description" && item.TagLibProperty != "Lyrics" && item.TagLibProperty != "Title" && item.TagLibProperty != "PerformersSort";
     }
     /// <summary>
     /// Update the tag from the user's input in a FluentTextField
@@ -436,10 +496,24 @@
     private void UpdateValueFromEvent(ChangeEventArgs val, AvailableProperties.PropertiesObject item, TagInfoContainer
     selectedFile)
     {
-        if (updateEverything) TagValueHandler.SetCurrentValue(val.Value == null ? null : val.Value.ToString(), files,
+        if (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_EVERYTHING) {
+            TagValueHandler.SetCurrentValue(val.Value == null ? null : val.Value.ToString(), files,
         item);
-        else TagValueHandler.SetCurrentValue(val.Value == null ? null : val.Value.ToString(), selectedFile.tag.Tag,
+        } else if (selectedFile.tag.Tag.Album.Trim() != "" && (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_ALBUM || (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_COMMON_ALBUM && EnsureNotCommonValue(item)))) {
+            foreach (TagInfoContainer file in files.Where(item => item.tag.Tag.Album == selectedFile.tag.Tag.Album).ToArray()) { // We need to convert the IEnumerable to an Array since otherwise, if the user changed the album name, not all of the objects would be updated with the new album name. By converting it to an array, we iterate over all the items that currently have that album name, even if we change their album value.
+                TagValueHandler.SetCurrentValue(val.Value == null ? null : val.Value.ToString(), file.tag.Tag, item);
+            }
+        } else TagValueHandler.SetCurrentValue(val.Value == null ? null : val.Value.ToString(), selectedFile.tag.Tag,
         item);
+    }
+
+    /// <summary>
+    /// Update the logic used to update multiple files
+    /// </summary>
+    private void UpdateMultipleOptions(ChangeEventArgs val) {
+        if (int.TryParse(val.Value?.ToString(), out int parsed)) {
+            IntelligentAlbumUpdate = (MultipleUpdateOptions)parsed;
+        }
     }
     /// <summary>
     /// Update the tag from the user's input in a FluentTextField. The updated file will be the currently-selected one.
@@ -465,27 +539,41 @@
     /// Read all the files from an FileEvent, and create a new TagLib.Tag
     /// </summary>
     /// <param name="e">The FileInput event</param>
-    private async Task GetFiles(InputFileChangeEventArgs e)
+    private async void GetFiles(IEnumerable<FluentInputFileEventArgs> arr)
     {
-        foreach (var file in e.GetMultipleFiles(maximumFileCount: 99999))
+        string ToastId = Guid.NewGuid().ToString();
+        ProgressToastParams toastParams = new ProgressToastParams(){
+            Title = "Reading files...",
+            Max = files.Count(),
+            Progress = 0
+        };
+        ToastService.ShowToast<Layout.ProgressToast, ProgressToastParams>(new ToastParameters<ProgressToastParams>()
+            {
+                Id = ToastId,
+                Intent = ToastIntent.Custom,
+                Timeout = 0,
+                Icon = (new Icons.Regular.Size20.DocumentAdd(), Color.Accent),
+                Content = toastParams
+            });
+        foreach (var file in arr)
         {
             try
             {
-                var stream = file.OpenReadStream(maxAllowedSize: 1024 * 1024 * 1024);
-                var memoryStream = new MemoryStream();
-                await stream.CopyToAsync(memoryStream);
-                byte[] fileBytes = memoryStream.ToArray();
-                files.Add(new TagInfoContainer(TagLib.File.Create(new StreamFileAbstraction(file.Name, memoryStream)), memoryStream,
-                file.Name, files.Count.ToString()));
-                ToastService.ClearProgressToasts();
-                ToastService.ShowProgress("Read: " + file.Name, 3000);
+                toastParams.Progress++;
+                toastParams.Title = $"Reading: {file.Name}";
+                string name = file.LocalFile?.FullName != null ? $"{file.LocalFile.FullName}{file.Name[file.Name.LastIndexOf(".")..]}" : file.Name; // We need to update the file name with its real outut extension (not .tmp), since it's the one that TagLib uses to get the suggested tag
+                if (file.LocalFile?.FullName != null) file.LocalFile.MoveTo(name);
+                files.Add(new TagInfoContainer(TagLib.File.Create(name), file.Name, files.Count.ToString()));
                 await Task.Yield();
             }
             catch (Exception ex)
             {
+                file.LocalFile?.Delete(); // Not supported file, let's delete it to save memory.
                 Console.WriteLine(ex);
             }
         }
+        ToastService.CloseToast(ToastId);
+        StateHasChanged(); // Necessary since otherwise the new items wouldn't be shown.
     }
     /// <summary>
     /// Download a file to the user's device
@@ -494,9 +582,7 @@
     private async Task SaveItem(TagInfoContainer container)
     {
         container.tag.Save();
-        string?[] result = await JS.InvokeAsync<string[]>("downloadByteArray", [container.memoryStream.ToArray(),
-container.file]);
-        if (result[0] != null) redownloadFiles.Add(new DownloadResult(result[2] == "0", result[0], result[1]));
+        string?[] result = await DownloadFile(await File.ReadAllBytesAsync(container.tag.FileAbstraction.Name), container.file);
         // If true, the file will be downloaded using the File System API
         ToastService.ClearProgressToasts();
         ToastService.ShowProgress((result[2] == "0" ? "Written on the device: " : "Started file downloading: ") +
@@ -508,51 +594,105 @@ container.file]);
     /// </summary>
     private async Task SaveItemsInZip()
     {
-
-        // Note: without the brackets, the zip file would not be readable in macOS.
-        using (MemoryStream stream = new MemoryStream())
+        string ToastId = Guid.NewGuid().ToString();
+        ProgressToastParams toastParams = new ProgressToastParams(){
+            Title = "Creating zip file...",
+            Max = files.Count(),
+            Progress = 0
+        };
+        ToastService.ShowToast<Layout.ProgressToast, ProgressToastParams>(new ToastParameters<ProgressToastParams>()
         {
-
-            using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
+            Id = ToastId,
+            Intent = ToastIntent.Custom,
+            Timeout = 0,
+            Icon = (new Icons.Regular.Size20.FolderZip(), Color.Accent),
+            Content = toastParams
+        });
+        try {
+            // Note: without the brackets, the zip file would not be readable in macOS.
+            using (MemoryStream stream = new MemoryStream())
             {
 
-                foreach (TagInfoContainer file in files)
+                using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
                 {
-                    file.tag.Save();
-                    ZipArchiveEntry entry = archive.CreateEntry(file.file, CompressionLevel.Fastest);
-                    using (Stream fileStream = entry.Open()) await fileStream.WriteAsync(file.memoryStream.ToArray());
-                    ToastService.ClearProgressToasts();
-                    ToastService.ShowProgress("Added " + file.file + " in the zip file", 3000);
-                    await Task.Yield();
+
+                    foreach (TagInfoContainer file in files)
+                    {
+                        toastParams.Title = $"Added {file.file} in the zip file";
+                        toastParams.Progress++;
+                        toastParams.UpdateState?.Invoke();
+                        file.tag.Save();
+                        ZipArchiveEntry entry = archive.CreateEntryFromFile(file.tag.FileAbstraction.Name, file.file, CompressionLevel.Fastest);
+                        await Task.Delay(25); // Give 25ms to update the UI
+                        await Task.Yield();
+                    }
+                };
+
+                stream.Position = 0;
+                string?[] result = await DownloadFile(stream.ToArray(), $"EditedMetadata-{DateTime.Now.ToString().Replace("/", "-")}.zip");
+                if (result != null) {
+                    toastParams.Title = $"The zip file has been {(result[2] == "0" ? "written on the device!" : "downloaded!")}";
+                    toastParams.UpdateState?.Invoke();
+                } else {
+                    toastParams.Title = "Failed zip file download.";
                 }
             };
-
-            stream.Position = 0;
-            string?[] result = await JS.InvokeAsync<string?[]>("downloadByteArray", [stream.ToArray(),
-"EditedMetadata.zip"]);
-            if (result[0] != null) redownloadFiles.Add(new DownloadResult(result[2] == "0", result[0], result[1]));
-            ToastService.ClearProgressToasts();
-            ToastService.ShowProgress("The zip file has been " + (result[2] == "0" ? "written on the device!" : "downloaded!"),
-            7500);
-        };
+        } catch (Exception ex) {
+            Console.WriteLine(ex);
+            toastParams.Title = $"Failed zip file creation: {(ex.ToString().Length > 150 ? ex.ToString().Substring(0, 150) : ex.ToString())}";
+        }
+        await Task.Delay(5000);
+        ToastService.CloseToast(ToastId);
     }
+
+    /// <summary>
+    /// Download a byte array with the suggested file name. 
+    /// </summary>
+    private async Task<string?[]> DownloadFile(byte[] bytes, string name, bool? useFSApi = false) {
+            string?[] result = await JS.InvokeAsync<string?[]>("downloadByteArray", [bytes,
+name, useFSApi]);
+            if (result[0] != null) redownloadFiles.Add(new DownloadResult(result[2] == "0", result[0], result[1]));
+            return result;
+    }
+
     /// <summary>
     /// Save all the tags directly on the user's drive using the File System API
     /// </summary>
     private async Task SaveItemsFSApi()
     {
-        foreach (TagInfoContainer file in files)
+        string ToastId = Guid.NewGuid().ToString();
+        ProgressToastParams toastParams = new ProgressToastParams(){
+            Max = files.Count(),
+            Title = "Starting file download...",
+            Progress = 0
+        };
+        ToastService.ShowToast<Layout.ProgressToast, ProgressToastParams>(new ToastParameters<ProgressToastParams>()
         {
-            file.tag.Save();
-            string?[] result = await JS.InvokeAsync<string?[]>("downloadByteArray", [file.memoryStream.ToArray(), file.file, true]);
-            if (result[0] != null) redownloadFiles.Add(new DownloadResult(result[2] == "0", result[0], result[1]));
-            ToastService.ClearProgressToasts();
-            ToastService.ShowProgress("Written " + file.file + " on the device's folder", 3000);
-            await Task.Yield();
+            Id = ToastId,
+            Intent = ToastIntent.Custom,
+            Timeout = 0,
+            Icon = (new Icons.Regular.Size20.DocumentAdd(), Color.Accent),
+            Content = toastParams
+        });
+        try {
+            foreach (TagInfoContainer file in files)
+            {
+                toastParams.Title = $"Writing {file.file} on the device's folder";
+                toastParams.Progress++;
+                toastParams.UpdateState?.Invoke();
+                file.tag.Save();
+                string?[] result = await DownloadFile(await File.ReadAllBytesAsync(file.tag.FileAbstraction.Name), file.file, true);
+                await Task.Delay(25);
+                await Task.Yield();
+            }
+            await JS.InvokeVoidAsync("clearDirectoryHandle");
+            toastParams.Title = "All the files have been written to the device's folder";
+        } catch (Exception ex) {
+            Console.WriteLine(ex);
+            toastParams.Title = $"Failed file copy: {(ex.ToString().Length > 150 ? ex.ToString().Substring(0, 150) : ex.ToString())}";
         }
-        await JS.InvokeVoidAsync("clearDirectoryHandle");
-        ToastService.ClearProgressToasts();
-        ToastService.ShowProgress("All the files have been written to the device's folder", 7500);
+        await Task.Delay(5000);
+        ToastService.CloseToast(ToastId);
     }
     /// <summary>
     /// Sort a grid in alphabetical order

@@ -1,0 +1,32 @@
+@using Microsoft.FluentUI.AspNetCore.Components
+@implements IToastContentComponent<ProgressToastParams>
+
+<div style="width: 100%">
+    <h4>@Content.Title</h4>
+    <FluentProgress Min="0" Max="@Content.Max" Value="@Content.Progress"></FluentProgress>
+    <span style="float: left;">@Content.Progress</span>
+    <span style="float: right">@Content.Max</span><br><br>
+    @if (Content.StopFetching != null) {
+        <div style="display: flex; justify-content: flex-end">
+            <FluentButton Appearance="Appearance.Accent" Style="width: fit-content;" @onclick="() => {
+                if (Content.StopFetching != null) Content.StopFetching();
+                Toast.Close();
+            }">Stop</FluentButton>
+    </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private FluentToast Toast { get; set; } = default!;
+
+    [Parameter]
+    public ProgressToastParams Content { get; set; } = default!;
+        protected override void OnInitialized()
+        {
+        Content.UpdateState = new Action(() => {
+            StateHasChanged();
+        });
+    }
+
+}

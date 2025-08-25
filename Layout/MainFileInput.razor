@@ -1,0 +1,33 @@
+@using Microsoft.FluentUI.AspNetCore.Components;
+@inject IJSRuntime JS;
+
+
+<FluentInputFile Id="fileUploader"
+                 Mode="InputFileMode.SaveToTemporaryFolder"
+                 Multiple="true"
+                 MaximumFileCount="99999"
+                 MaximumFileSize="@(1024*1024*1024)"
+                 OnCompleted="@GetFiles"
+                 @bind-ProgressPercent="@ProgressPercent"
+                 Style="height: 350px; border-radius: 8px;">
+    <ChildContent>
+        <label for="fileUploader">
+            <FluentIcon Value="@(new @Icons.Regular.Size24.ArrowUpload())" />
+            </label>
+            <div>
+            Drag files here you wish to upload,
+            or <label @onclick='() => JS.InvokeVoidAsync("clickInput", [false])'>browse a file</label>, or <label @onclick='() => JS.InvokeVoidAsync("clickInput", [true])'>pick a directory</label>
+            </div><br>
+    </ChildContent>
+</FluentInputFile>
+
+@code {
+    /// <summary>
+    /// The Action called when the upload has been completed
+    /// </summary>
+    [Parameter]
+    public required Action<IEnumerable<FluentInputFileEventArgs>> GetFiles { get; set; }
+
+    private int ProgressPercent = 0;
+
+}

@@ -63,6 +63,8 @@ fluent-listbox {
 .fluent-dialog-header>div>div>h2 {
     width: 100%;
     margin: 0px;
+    display: flex;
+    align-self: center;
 }
 
 .fluent-dialog-header>div>div>fluent-button {
@@ -94,4 +96,23 @@ fluent-data-grid-row>fluent-data-grid-cell:not(:first-child) {
     flex: 1 0 fit-content !important;
     width: fit-content !important;
     display: inline-flex !important;
+}
+
+fluent-card > h3:first-child {
+    margin-top: 0px;
+}
+
+fluent-dialog::part(overlay) {
+    transition: opacity 0.2s ease-in-out;
+    background: rgba(0, 0, 0, 0.7) !important
+}
+
+fluent-dialog {
+    z-index: 998 !important;
+}
+.fluent-toast {
+    z-index: 999;
+}
+.fullWidthChildren > * {
+    width: 100%;
 }

@@ -5,7 +5,8 @@
     <FluentDialogHeader>
         <div>
             <h2>Licenses:</h2>
-            <FluentButton Appearance="Appearance.Lightweight" @onclick="() => Callback()">X</FluentButton>
+            <FluentButton Appearance="Appearance.Lightweight" @onclick="() => Callback()" IconStart="@(new Icons.Regular.Size20.Dismiss())"></FluentButton>
+            <FluentTooltip Anchor="CloseDialogBtn" Position="TooltipPosition.Left">Close the dialog</FluentTooltip>
         </div>
     </FluentDialogHeader>
     <FluentSelect Items="licenses" TOption="LicensesClass" OptionText="@(license => license.displayName)" OptionValue="@(license => license.output)" @bind-Value="selectedText"></FluentSelect><br><br>
@@ -28,7 +29,8 @@
     private static List<LicensesClass> licenses = new List<LicensesClass>(){
 new LicensesClass(LicensesClass.AvailableLicenses.MIT, "Blazor (WebAssembly) / ASP.NET Core", ".NET Foundation and Contributors"),
 new LicensesClass(LicensesClass.AvailableLicenses.LGPL_2_1, "TagLib-Sharp", null),
-new LicensesClass(LicensesClass.AvailableLicenses.MIT, "TagLibSharp-Web", "2024 Dinoosauro")
+new LicensesClass(LicensesClass.AvailableLicenses.MIT, "TagLibSharp-Web", "2024 Dinoosauro"),
+new LicensesClass(LicensesClass.AvailableLicenses.MIT, "Newtonsoft.Json", "2007 James Newton-King")
 };
 /// <summary>
 /// The text to display of the selected license

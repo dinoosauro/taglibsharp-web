@@ -1,0 +1,333 @@
+@using Microsoft.FluentUI.AspNetCore.Components;
+@using MetadataChange;
+@using System.Web
+@using System.IO.Compression
+@using System.Text
+@using System.Text.Json
+@using System.Text.RegularExpressions
+@using System.Xml.Linq
+@inject IJSRuntime JS;
+
+@inject IToastService ToastService
+
+<FluentDialog Style="z-index: 998 !important">
+    <FluentDialogHeader>
+        <div>
+            <h2>Upload lyrics:</h2>
+            <FluentButton Id="CloseDialogBtn" Appearance="Appearance.Lightweight" @onclick="() => Callback()" IconStart="@(new Icons.Regular.Size20.Dismiss())"></FluentButton>
+            <FluentTooltip Anchor="CloseDialogBtn" Position="TooltipPosition.Left">Close the dialog. Pending lyrics operations will continue.</FluentTooltip>
+        </div>
+    </FluentDialogHeader>
+    <FluentSelect TOption="string" @onchange="ChangeLyricsMethod">
+        <FluentOption Value="0">Get from local text/lyrics file</FluentOption>
+        <FluentOption Value="1">Get online (from LRCLib)</FluentOption>
+    </FluentSelect><br><br>
+    <FluentCard>
+        <h3>Conversion settings:</h3>
+        @if (!useLrcLib) {
+            <FluentCheckbox @bind-Value="parseLrcFiles">Parse LRC and TTML files, if available</FluentCheckbox><br><br>
+            <FluentCheckbox @bind-Value="pickFolder">Pick a folder</FluentCheckbox>
+        } else {
+            <FluentCheckbox @bind-Value="lrcLib_checkAlbumName">Use album name for song matching</FluentCheckbox><br><br>
+            <FluentCheckbox @bind-Value="lrcLib_checkArtistName">Use artist name for song matching</FluentCheckbox><br><br>
+            <FluentCheckbox @bind-Value="lrcLib_checkTrackDuration">Use track duration for song matching</FluentCheckbox><br><br>
+            <FluentCheckbox @bind-Value="lrcLib_downloadResults">Download results (including line-by-line lyrics) in a zip file</FluentCheckbox>
+        }
+    </FluentCard><br>
+    <FluentMenuButton Text="Update lyrics" OnMenuChanged="SaveEvent" Appearance="Appearance.Accent" Items="@conversionType"></FluentMenuButton>
+    @if (!useLrcLib) {
+    <p><strong>Note:</strong> if you choose to update multiple lyrics, the application will try matching every LRC/TTML file to the audio file with the same name, but different extension.</p>
+    }
+    <InputFile multiple="@singleOperation" style="display: none;" directory="@(() => pickFolder && !singleOperation)" webkitdirectory="@(() => pickFolder && !singleOperation)" id="lyricsFilePicker" OnChange="HandleFiles"></InputFile>
+</FluentDialog>
+
+<script>
+    function callInputLyrics() {
+        document.getElementById("lyricsFilePicker").click();
+    }
+</script>
+
+@code {
+    /// <summary>
+    /// The list of all the files that are loaded in the website
+    /// </summary>
+    [Parameter]
+    public required List<TagInfoContainer> Container { get; set; }
+
+    /// <summary>
+    /// The currently selected file
+    /// </summary>
+    [Parameter]
+    public required string CurrentPosition { get; set; }
+    /// <summary>
+    /// The Action to call for closing this dialog
+    /// </summary>
+    [Parameter]
+    public required Action Callback { get; set; }
+    /// <summary>
+    /// Rerender the main state after a lyrics has been updated
+    /// </summary>
+    [Parameter]
+    /// <summary>
+    /// The action that should be called to re-render the state.
+    /// The state should be re-rendered only if the dialog is closed, and a Lyrics field has been updated.
+    /// </summary>
+    public required Action RerenderState { get; set; }
+    [Parameter]
+
+    /// <summary>
+    /// The Action that'll download the zip file with all the lyrics.
+    /// </summary>
+    public required Action<byte[]> DownloadFile {get; set;}
+    /// <summary>
+    /// The options the user can choose from for updatin the lyrics
+    /// </summary>
+    private Dictionary<string, string> conversionType = new(){
+        {"0", "Update this file"},
+        {"1", "Update all files"},
+        {"2", "Update files with no lyrics"}
+    };
+
+    /// <summary>
+    /// If LRCLib should be used to fetch the lyrics of the current track
+    /// </summary>
+    private bool useLrcLib = false;
+    /// <summary>
+    /// If LRC and TTML files should be parsed
+    /// </summary>
+    private bool parseLrcFiles = true;
+    /// <summary>
+    /// If a folder should be picked
+    /// </summary>
+    private bool pickFolder = false;
+    private bool lrcLib_checkAlbumName = true;
+    private bool lrcLib_checkArtistName = true;
+    private bool lrcLib_checkTrackDuration = true;
+    private bool lrcLib_downloadResults = true;
+    /// <summary>
+    /// If only a file should be picked
+    /// </summary>
+    private bool singleOperation = true;
+    /// <summary>
+    /// If all the audio/video files that have no lyrics should be updated
+    /// </summary>
+    private bool lookOnlyForMissingLyrics = false;
+    /// <summary>
+    /// The parameters of the current ProgressToast
+    /// </summary>
+    private ProgressToastParams progressParams = new ProgressToastParams();
+    /// <summary>
+    /// The function called when the user has decided where to save the lyrics
+    /// </summary>
+    private void SaveEvent(MenuChangeEventArgs args) {
+        singleOperation = args.Id == "0";
+        lookOnlyForMissingLyrics = args.Id == "2";
+        UpdateActionHandler();        
+    }
+
+    /// <summary>
+    /// Update the useLrcLib checkbox
+    /// </summary>
+    private void ChangeLyricsMethod(ChangeEventArgs e) {
+        useLrcLib = e.Value?.ToString() == "1";
+    }
+
+    /// <summary>
+    /// Read and parse LRC files
+    // <param name="lines">the file content, divided in lines</param>
+    /// </summary>
+    private string ReadLrcFile(string[] lines) {
+        StringBuilder builder = new StringBuilder();
+        foreach(string line in lines) {
+            string outputLine = line;
+            if (Regex.Match(outputLine, @"^\[\d+:\d{2}\.\d+\]").Success) outputLine = line[(line.IndexOf("]") + 1)..].Trim(); // Valid LRC file. Let's remove the start tag
+            MatchCollection wordByWordLyrics = Regex.Matches(outputLine, @"\<\d+:\d{2}\.\d+\>"); // Look for word-by-word lyrics
+            foreach (Match m in wordByWordLyrics)
+            {
+                outputLine = string.Join(" ", outputLine.Split(m.Captures[0].Value).Select(str => str.Trim()));
+            }
+            builder.Append(outputLine).AppendLine();
+        }
+        return builder.ToString();
+    } 
+
+    /// <summary>
+    /// Try parsing the TTML file
+    /// <param name="source">the string of the TTML file</param>
+    /// </summary>
+    private string ReadTTMLFiles(string source) {
+        try {
+            // Parse the XML file
+            StringBuilder builder = new StringBuilder();
+            XDocument document = XDocument.Parse(source);
+            XNamespace xmlns = document.Root.GetDefaultNamespace(); // We need to specify the default namespace since otherwise we would get nothing in the Descendants
+            foreach (XElement stanza in document.Descendants(xmlns + "div")) // Stanza
+            {
+                foreach (XElement paragraph in stanza.Descendants(xmlns + "p")) // Paragraph
+                {
+                    if (!paragraph.HasElements) builder.Append(paragraph.Value); // No word-by-word lyrics
+                    else
+                    {
+                        foreach (XElement span in paragraph.Descendants(xmlns + "span")) // Word-by-word lyrics
+                        {
+                            XElement realSpan = span;
+                            while (realSpan.HasElements) realSpan = realSpan.Elements().First(); // Get also nested spans
+                            builder.Append(realSpan.Value).Append(' ');
+                        }
+                    }
+                    builder.AppendLine();
+                }
+                builder.AppendLine();
+            }
+            return builder.ToString();
+        } catch(Exception) {
+            return "";
+        }
+    }
+
+    /// <summary>
+    /// Read a file and try fetching its lyrics
+    /// </summary>
+    private async Task<string> GetParsedLyrics(IBrowserFile file) {
+        using (Stream stream = file.OpenReadStream()) {
+            using (StreamReader reader = new StreamReader(stream)) {
+                string fileContent = await reader.ReadToEndAsync();
+                if (!parseLrcFiles) return fileContent;
+                string TTMLParse = ReadTTMLFiles(fileContent);
+                if (TTMLParse != "") return TTMLParse;
+                return ReadLrcFile(fileContent.Split("\n"));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The function that is ran after the files have been chosen
+    /// </summary>
+    private async Task HandleFiles(InputFileChangeEventArgs e) {
+        if (!singleOperation) { // Look for files that have the same name as the uploaded audio/video
+            foreach (var file in e.GetMultipleFiles(maximumFileCount: 99999)) {
+                string fileName = file.Name[Math.Max(0, file.Name.LastIndexOf("/"))..file.Name.LastIndexOf(".")];
+                TagInfoContainer? updateFile = Container.Find(item => item.file[Math.Max(0, file.Name.LastIndexOf("/"))..item.file.LastIndexOf(".")] == fileName);
+                if (updateFile != null) {
+                    if (lookOnlyForMissingLyrics && updateFile.tag.Tag.Lyrics != null && updateFile.tag.Tag.Lyrics.Trim() != "") continue;
+                    updateFile.tag.Tag.Lyrics = await GetParsedLyrics(file);
+                } 
+            }
+        } else {
+            Container[int.Parse(CurrentPosition)].tag.Tag.Lyrics = await GetParsedLyrics(e.File);
+        }
+        RerenderState();
+    } 
+
+    /// <summary>
+    /// The function that either fetches the content from TagLib, or asks the user to pick the LRC/TTML files.
+    /// </summary>
+    private void UpdateActionHandler() {
+        if (useLrcLib) {
+            /// <summary>
+            /// If not an empty string, this string contains all the errors that have happened while fetching data from LRCLib
+            /// </summary>
+            string outputErrors = "";
+            List<TagInfoContainer> itemToLook = singleOperation ? [Container[int.Parse(CurrentPosition)]] : lookOnlyForMissingLyrics ? Container.Where(file => file.tag.Tag.Lyrics == null || file.tag.Tag.Lyrics.Trim() == "").ToList() : Container;
+            // Create new Toast
+            progressParams.Max = itemToLook.Count();
+            string ToastId = Guid.NewGuid().ToString();
+            ToastService.ShowToast<ProgressToast, ProgressToastParams>(new ToastParameters<ProgressToastParams>()
+                {
+                    Id = ToastId,
+                    Intent = ToastIntent.Custom,
+                    Timeout = 0,
+                    Icon = (new Icons.Regular.Size20.CloudDatabase(), Color.Accent),
+                    Content = progressParams
+                });
+            Task.Run(new Action(async () => {
+                using (MemoryStream stream = new MemoryStream()) {
+                    using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Create, true)) {
+                        int progress = 0;
+                        /// <summary>
+                        /// If the LRCLib operation should be stopped.
+                        /// This is changed only if the user clicks on the "Stop" button in the ProgressToast
+                        /// </summary>
+                        bool stop = false;
+                        progressParams.StopFetching = new Action(() => {
+                            stop = true;
+                        });
+                        foreach (TagInfoContainer file in itemToLook) {
+                            if (stop) break;
+                            progress++;
+                            progressParams.Title = $"Fetching lyrics of: {file.tag.Tag.Title}";
+                            progressParams.Progress = progress;
+                            if (progressParams.UpdateState != null) progressParams.UpdateState(); // Update the progress in the Toast
+                            using (HttpClient client = new HttpClient()) {
+                                try {
+                                    List<LRCLibJson>? json = await client.GetFromJsonAsync<List<LRCLibJson>>($"https://lrclib.net/api/search?track_name={Uri.EscapeDataString(file.tag.Tag.Title)}{(lrcLib_checkAlbumName ? $"&album_name={Uri.EscapeDataString(file.tag.Tag.Album)}" : "")}{(lrcLib_checkArtistName ? $"&artist_name={Uri.EscapeDataString(file.tag.Tag.Performers[0])}" : "")}");
+                                    if (json != null && json?.Count > 0) {
+                                        /// <summary>
+                                        /// The LRCLibJson that should be used for this track
+                                        /// </summary>
+                                        LRCLibJson? selectedFile = lrcLib_checkTrackDuration ? null : json[0];
+                                        if (selectedFile == null) {
+                                            foreach (LRCLibJson possibleJson in json) {
+                                                if (possibleJson.duration - 3 < file.tag.Properties.Duration.TotalSeconds && possibleJson.duration + 3 > file.tag.Properties.Duration.TotalSeconds) { // Allow difference of three seconds
+                                                    selectedFile = possibleJson;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if (selectedFile != null) {
+                                            if (lrcLib_downloadResults) { // Update zip entry
+                                                if (selectedFile.plainLyrics != null) await WriteInZipFile($"plain/{ChangeExtension(file.file, "txt")}", selectedFile.plainLyrics, archive);
+                                                if (selectedFile.syncedLyrics != null) await WriteInZipFile($"synced/{ChangeExtension(file.file, "lrc")}", selectedFile.syncedLyrics, archive);
+                                                await WriteInZipFile($"json/{ChangeExtension(file.file, "json")}", Newtonsoft.Json.JsonConvert.SerializeObject(json), archive);
+                                            }
+                                            // Update tag value
+                                            if (selectedFile.plainLyrics != null) {
+                                                file.tag.Tag.Lyrics = selectedFile.plainLyrics;
+                                                RerenderState();
+                                            } else if (selectedFile.syncedLyrics != null) {
+                                                file.tag.Tag.Lyrics = ReadLrcFile(selectedFile.syncedLyrics.Split("\n"));
+                                                RerenderState();
+                                            }
+                                        } else outputErrors += $"No match found of {file.file} (Title: {file.tag.Tag.Title} — Artists: {file.tag.Tag.Performers[0]} — Album: {file.tag.Tag.Album})\n";
+                                    } else outputErrors += $"No match found of {file.file} (Title: {file.tag.Tag.Title} — Artists: {file.tag.Tag.Performers[0]} — Album: {file.tag.Tag.Album})\n";
+                                } catch (Exception ex)
+                                {
+                                    Console.WriteLine(ex);
+                                    outputErrors += $"Failed fetching of {file.file} (Title: {file.tag.Tag.Title} — Artists: {file.tag.Tag.Performers[0]} — Album: {file.tag.Tag.Album})\n";
+                                }
+                            }
+                        }
+                        if (outputErrors != "") await WriteInZipFile("Errors.txt", outputErrors, archive);
+                    }
+                    if (lrcLib_downloadResults) { // Download the zip file
+                        stream.Position = 0;
+                        DownloadFile(stream.ToArray());
+                    }
+                }
+                ToastService.CloseToast(ToastId);
+            }));
+        } else { // Open the file picker
+            JS.InvokeVoidAsync("callInputLyrics");
+        }
+    }
+
+    /// <summary>
+    /// Change the extension of the provided path
+    /// <param name="path">The path of the source file</param>
+    /// <param name="extension">The output extension</param>
+    /// </summary>
+    private string ChangeExtension(string path, string extension) {
+        if (path.IndexOf(".") != -1) path = path[..path.LastIndexOf(".")];
+        return $"{path}.{extension}";
+    }
+    /// <summary>
+    /// Add a string in the provided zip archive
+    /// <param name="path">The path where the string will be written</param>
+    /// <param name="content">The content of the new file</param>
+    /// <param name="archive">The ZipArchive where the new file will be saved</param>
+    /// </summary>
+    async Task WriteInZipFile(string path, string content, ZipArchive archive) {
+        ZipArchiveEntry entry = archive.CreateEntry(path);
+        using (Stream stream = entry.Open()) await stream.WriteAsync(Encoding.UTF8.GetBytes(content));
+    }
+}

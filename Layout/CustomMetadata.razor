@@ -1,19 +1,32 @@
 @using Microsoft.FluentUI.AspNetCore.Components;
+@using System.Text;
 @using MetadataChange;
+@using System.Dynamic
+@using System.Text.Json
+@using Newtonsoft.Json
+@using System.IO.Compression
+@using TagLib
 
-<FluentDialog>
+@inject IJSRuntime JS;
+@inject IToastService ToastService
+
+
+
+<FluentDialog style="--dialog-width: 80vw; z-index: 998 !important">
     <FluentDialogHeader>
         <div>
-            <h2>Custom metadata:</h2>
-            <FluentButton Appearance="Appearance.Lightweight" @onclick="() => Callback()">X
-            </FluentButton>
+            <h2>Advanced metadata:</h2>
+            <FluentButton Id="CloseDialogBtn" IconStart="@(new Icons.Regular.Size20.Dismiss())" Appearance="Appearance.Lightweight" @onclick="() => Callback()"></FluentButton>
+            <FluentTooltip Anchor="CloseDialogBtn" Position="TooltipPosition.Left">Close the dialog. The already-existing metadata that was edited will be saved.</FluentTooltip>
         </div>
     </FluentDialogHeader>
     <p style="margin-top: 0px;">Choose the metadata container from below:</p>
-    <FluentSelect Items="ChangeCustomValue" OptionText="@(item => item.Key)"
-        OptionValue="@(item => ((int) item.Value).ToString())" @bind-Value="ContainerSelectBinding"></FluentSelect>
+    <FluentSelect Items="ChangeCustomValue" @onchange="ChangedMetadataContainer" OptionText="@(item => item.Key)"
+        OptionValue="@(item => ((int)item.Value).ToString())" @bind-Value="ContainerSelectBinding"></FluentSelect>
     <br><br>
-    @if (ContainerSelectBinding == "1")
+    <FluentCard AreaRestricted="false">
+        <h3>Apply custom metadata value:</h3>
+        @if (ContainerSelectBinding == "1")
     {
         <label class="labelFlex">Meanstring (tip: leave this as it is): <FluentTextField @bind-Value="meanstring">
             </FluentTextField></label>
@@ -26,17 +39,93 @@
             </FluentTextField></label>
 
         <br>
+    } else if (ContainerSelectBinding == "3") {
+        <label class="labelFlex">
+            Frame type: <FluentSelect TOption="string" @bind-Value="mp3Type">
+                <FluentOption Value="0">User Text Information</FluentOption>
+                <FluentOption Value="1">Private</FluentOption>
+                <FluentOption Value="2">Comments</FluentOption>
+            </FluentSelect>
+        </label><br>
     }
     <label class="labelFlex">Key: <FluentTextField @bind-Value="key"></FluentTextField></label><br>
+    @if (ContainerSelectBinding == "4") {
+        <label class="labelFlex">Subkey (optional): <FluentTextField @bind-Value="subkey"></FluentTextField></label><br>
+    }
     <label class="labelFlex">Value: <FluentTextField @bind-Value="value"></FluentTextField></label><br>
-    <div class="flexContainer">
-        <FluentButton Appearance="Appearance.Accent" @onclick="() => SaveFile(false)">Apply</FluentButton>
-        <FluentButton @onclick="() => SaveFile(true)">Apply to everything
-        </FluentButton>
-    </div>
+    <FluentMenuButton Text="Save custom metadata tag" OnMenuChanged="HandleSaveCustomMetadata" Appearance="Appearance.Accent" Items="@SaveCustomMetadata"></FluentMenuButton>
+    </FluentCard><br>
+    <FluentCard>
+    <h3>Already added metadata:</h3>
+    <FluentDataGrid ResizableColumns="true" Items="addedMetadata.AsQueryable()" ItemKey="@(tag => tag.id)"
+        ResizeType="DataGridResizeType.Discrete">
+        <TemplateColumn Title="Actions">
+            @if (context.deleteItem != null) {
+                <FluentButton Id="@($"{context.id}CustomMetadataDelete")" @onclick="() => context.deleteItem()" IconStart="@(new Icons.Regular.Size20.Delete())"></FluentButton>
+                <FluentTooltip Anchor="@($"{context.id}CustomMetadataDelete")" Position="TooltipPosition.Bottom">Delete this metadata</FluentTooltip>
+            }
+        </TemplateColumn>
+        @if (Array.Find(addedMetadata, x => x.meanstring != null) != null)
+        {
+            <TemplateColumn Title="@(ContainerSelectBinding == "4" ? "Key" : "Meanstring")" SortBy="GridSort<CurrentMetadataStorage>.ByAscending(file => file.meanstring)" Sortable="true">
+                <FluentTextField Disabled="@(context.updateMeanstring == null)" @onchange="(val) => context.updateMeanstring(val.Value.ToString())" Value="@(context.meanstring)"></FluentTextField>
+            </TemplateColumn>
+        }
+        <TemplateColumn Title="@(ContainerSelectBinding == "4" ? "Key (or subkey)" : "Key")" SortBy="GridSort<CurrentMetadataStorage>.ByAscending(file => file.key)" Sortable="true">
+            <FluentTextField Disabled="@(context.updateTag == null)" @onchange="(val) => context.updateTag(val.Value.ToString())" Value="@(context.key)"></FluentTextField>
+        </TemplateColumn>
+        <TemplateColumn Title="Value" SortBy="GridSort<CurrentMetadataStorage>.ByAscending(file => string.Join(',', file.values))" Sortable="true">
+            <FluentTextArea Disabled="@(context.updateEntry == null)" @onchange="(val) => context.updateEntry(val.Value.ToString())" Value="@(string.Join(", ", context.values))"></FluentTextArea>
+        </TemplateColumn>
+    </FluentDataGrid>
+    </FluentCard>
+    @if (addedMetadata.Count() != 0) {
+        <br>
+        <FluentCard AreaRestricted="false">
+            <h3>Export added metadata:</h3>
+            <FluentSelect TOption="string" @onchange="(arg) => {
+                metadataExportType = (MetadataExportType)int.Parse(arg.Value.ToString());
+                }">
+                <FluentOption Value="1">Export all metadata (even custom ones)</FluentOption>
+                <FluentOption Value="2">Export all metadata (keep only container-specific data)</FluentOption>
+                <FluentOption Value="0">Export common metadata (with easy-to-read keys)</FluentOption>
+                <FluentOption Value="3">Export everything (all metadata + parsed fields)</FluentOption>
+            </FluentSelect><br><br>
+            <label class="labelFlex">
+                <FluentCheckbox @bind-Value="saveCsv"></FluentCheckbox>Save as a CSV file (experimental)
+            </label><br>
+            @if (saveCsv) {
+                <p>
+                    <strong>Note:</strong> if you're not satisfied with the CSV output, try <a href="https://dinoosauro.github.io/media-metadata-reader/" target="_blank">media-metadata-reader</a>, that has a way better implementation of CSV files.
+                </p><br>
+            }
+            <label class="labelFlex">
+                <FluentCheckbox @bind-Value="separatedFiles"></FluentCheckbox>Save every audio/video metadata in a separated file
+            </label><br>
+            <label class="labelFlex">
+                For binary data, <FluentSelect @onchange="(arg) => {
+                    binaryDataOption = (PossibleBinaryDataOptions)int.Parse((arg.Value ?? '0').ToString() ?? '0'.ToString());
+                    }" TOption="string">
+                    <FluentOption Value="0">Skip them</FluentOption>
+                    <FluentOption Value="1">Add them as a byte array</FluentOption>
+                    <FluentOption Value="2">Add them as a base64 string</FluentOption>
+                </FluentSelect>
+            </label><br>
+            <FluentMenuButton Text="Export metadata" OnMenuChanged="StartMetadataExport" Items="PossibleExportOptions"></FluentMenuButton>
+        </FluentCard>
+    }
 </FluentDialog>
 
-@code {
+<script>
+    function ConvertToCsv(entries) {
+        const obj = entries.map(([arr, isArray]) => {
+            return isArray === "1" ? JSON.parse(arr)[0] : Object.entries(JSON.parse(arr));
+        });
+        return convertToCsv(convertToArray(obj.length === 1 ? obj[0] : obj));
+    }
+</script>
+
+    @code {
     /// <summary>
     /// The position of the file that'll be
     /// </summary>
@@ -54,6 +143,11 @@
     [Parameter]
     public required List<TagInfoContainer> AvailableTags { get; set; }
     /// <summary>
+    /// The Action called to download a file. The first argument is the byte array to save, while the second is the suggested file name.
+    /// </summary>
+    [Parameter]
+    public required Action<byte[], string> DownloadFileAction {get; set;}
+    /// <summary>
     /// The key of the new metadata
     /// </summary>
     private string key = "";
@@ -62,6 +156,14 @@
     /// </summary>
     private string value = "";
     /// <summary>
+    /// The optional subkey for Matroska custom metadata
+    /// </summary>
+    private string subkey = "";
+    /// <summary>
+    /// The type of the MP3 container. If 0, it'll be a UserTextInformationFrame; if 1 it'll be a PrivateFrame; if 2 it'll be a Comment Frame.
+    /// </summary>
+    private string mp3Type = "0";
+    /// <summary>
     /// Meanstring used as an identifier for Apple tags
     /// </summary>
     private string meanstring = "com.apple.iTunes";
@@ -69,6 +171,36 @@
     /// The ID of the selected container
     /// </summary>
     private string ContainerSelectBinding = "0";
+    /// <summary>
+    /// If a CSV file should be saved in the "Export metadata" section
+    /// </summar>
+    private bool saveCsv = false;
+    /// <summary>
+    /// If every exported audio/video in the "Export metadata" section should be saved in a different entry of a zip file.
+    /// </summary>
+    private bool separatedFiles = true;
+    /// <summary>
+    /// What should be saved in the output CSV/JSON
+    /// </summary>
+    private MetadataExportType metadataExportType = MetadataExportType.ALL_TAGLIB;
+    /// <summary>
+    /// How binary data should be saved in the output CSV/JSON
+    /// </summary>
+    private PossibleBinaryDataOptions binaryDataOption = PossibleBinaryDataOptions.DISCARD;
+    private enum PossibleBinaryDataOptions {
+        /// <summary>
+        /// Delete binary data from the output file
+        /// </summary>
+        DISCARD = 0,
+        /// <summary>
+        /// Export them as a normal byte array
+        /// </summary>
+        EXPORT_ARRAY = 1,
+        /// <summary>
+        /// Export them in a base64 string
+        /// </summary>
+        EXPORT_BASE64 = 2
+    }
     /// <summary>
     /// A Dictionary that contains the description as a key, and the tag enum as the value
     /// </summary>
@@ -85,6 +217,206 @@
 {"XMP Image Tag (Lots of image formats)", CustomMetadataFormat.CustomMetadataTypes.XMP},
 };
 
+    /// <summary>
+    /// Dictionary of the possible metadata export options for the FluentMenuButton
+    /// </summary>
+    private Dictionary<string, string> PossibleExportOptions = new Dictionary<string, string>(){
+        {"0", "Export metadata of this file"},
+        {"1", "Export metadata of everything"},
+        {"2", "Export metadata of files with the same album"}
+    };
+
+    /// <summary>
+    /// The function called after the user has clicked the button to export metadata.
+    /// </summary>
+    private async Task StartMetadataExport(MenuChangeEventArgs e) {
+        /// <summary>
+        /// A list of string[] that'll contain the JSON string and the custom parsing option.
+        /// </summary>
+        List<string[]> outputArrays = [];
+        /// <summary>
+        /// The file name of the item that in `outputArrays` that was elaborated in the same position.
+        /// </summary>
+        List<string> fileNames = [];
+        string ToastId = Guid.NewGuid().ToString();
+        List<TagInfoContainer> iterateThis = e.Id == "0" ? new(){AvailableTags[CurrentFile]} : e.Id == "1" ? AvailableTags : AvailableTags.Where(item => item.tag.Tag.Album == AvailableTags[CurrentFile].tag.Tag.Album).ToList();
+        ProgressToastParams toastParams = new ProgressToastParams(){
+            Title = "Starting...",
+            Max = iterateThis.Count(),
+            Progress = 0
+        };
+        ToastService.ShowToast<Layout.ProgressToast, ProgressToastParams>(new ToastParameters<ProgressToastParams>()
+        {
+            Id = ToastId,
+            Intent = ToastIntent.Custom,
+            Timeout = 0,
+            Icon = (new Icons.Regular.Size20.DocumentTableArrowRight(), Color.Accent),
+            Content = toastParams
+        });
+
+        foreach (TagInfoContainer container in iterateThis) {
+            outputArrays.Add(ExportMetadata(container));
+            fileNames.Add(container.file);
+            toastParams.Progress++;
+            toastParams.Title = $"Serialized {container.file}";
+            toastParams.UpdateState?.Invoke();
+            await Task.Delay(25);
+        }
+        if (separatedFiles) { // Create a zip file, and save it there
+            toastParams.Progress = 0;
+            using (MemoryStream stream = new MemoryStream()) {
+                using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Create, true)) {
+                    for (int i = 0; i < outputArrays.Count(); i++) {
+                        ZipArchiveEntry entry = archive.CreateEntry($"{fileNames.ElementAt(i)[..fileNames.ElementAt(i).LastIndexOf(".")]}.{(saveCsv ? "csv" : "json")}");
+                        using (Stream fileStream = entry.Open()) {
+                            if (saveCsv) { // Convert to CSV using JavaScript
+                                string[][] output = [outputArrays.ElementAt(i)];
+                                await fileStream.WriteAsync(Encoding.UTF8.GetBytes(await JS.InvokeAsync<string>("ConvertToCsv", [output])));
+                            } else await fileStream.WriteAsync(Encoding.UTF8.GetBytes(outputArrays.ElementAt(i)[0]));
+                        }
+                        toastParams.Progress++;
+                        toastParams.Title = $"Added metadata of {fileNames.ElementAt(i)} to the zip file";
+                        toastParams.UpdateState?.Invoke();
+                        await Task.Delay(25);
+                    }
+                }
+                DownloadFileAction(stream.ToArray(), $"MetadataList-{(e.Id == "2" ? AvailableTags[CurrentFile].tag.Tag.Album : e.Id == "0" ? AvailableTags[CurrentFile].file[..AvailableTags[CurrentFile].file.LastIndexOf(".")] : DateTime.Now.ToString().Replace("/", "-"))}.zip");
+            }
+            return;
+        }
+        // Single file download
+        if (saveCsv) {
+            toastParams.Progress = 0;
+            toastParams.Max = 1;
+            toastParams.Title = "Converting to CSV...";
+            toastParams.UpdateState?.Invoke();
+            await Task.Delay(25);
+            DownloadFileAction(Encoding.UTF8.GetBytes(await JS.InvokeAsync<string>("ConvertToCsv", [outputArrays])), $"MetadataList-{(e.Id == "2" ? AvailableTags[CurrentFile].tag.Tag.Album : e.Id == "1" ? AvailableTags[CurrentFile].file[..AvailableTags[CurrentFile].file.LastIndexOf(".")] : DateTime.Now.ToString().Replace("/", "-"))}.csv");
+        } else {
+            DownloadFileAction(Encoding.UTF8.GetBytes($"[{string.Join(",", outputArrays)}]"), $"MetadataList-{(e.Id == "2" ? AvailableTags[CurrentFile].tag.Tag.Album : e.Id == "1" ? AvailableTags[CurrentFile].file[..AvailableTags[CurrentFile].file.LastIndexOf(".")] : DateTime.Now.ToString().Replace("/", "-"))}.json");
+        }
+        toastParams.Progress = 1;
+        toastParams.Max = 1;
+        toastParams.Title = "File downloaded!";
+        toastParams.UpdateState?.Invoke();
+        await Task.Delay(3000);
+        ToastService.CloseToast(ToastId);
+
+    }
+
+    /// <summary>
+    /// Obtain the JSON that contains all of the metadata
+    // <param name="container">The TagInfoContainer of the file metadata should be extracted</param>
+    /// </summary>
+    private string[] ExportMetadata(TagInfoContainer container) {
+        // In case the user wants to export everything, so even the metadata fetched by the application, we'll create a new class that'll contain both the fetched metadata and the TagLib object
+        object output = metadataExportType == MetadataExportType.ALL_APP ? new ExportProps(MetadataChange.CustomMetadataUtils.GetAllTags((container.id == CurrentFile.ToString() ? null  : CustomMetadataFormat.GetSuggestedContainer(container.tag.Tag.TagTypes.ToString().ToLower())) ?? (CustomMetadataFormat.CustomMetadataTypes)int.Parse(ContainerSelectBinding), container.tag, null, true).Select(item => new CustomMetadataExportProps(item.key, item.values, item.meanstring, item.binaryItem)).ToArray(), container.tag.Tag) : container.tag.Tag;
+        /// <summary>
+        /// How the CSV function should read the JSON object:
+        /// - If the value is "0", it'll be read just as a normal JSON file
+        /// - If the value is "1", the first entry of the JSON object will be read. The JSON object must be an array.
+        /// - If the entry is "2", the Object.entries of the JSON object will be read.
+        /// </summary>
+        int addToMultipleLines = 0;
+
+        JsonSerializerSettings settings = new JsonSerializerSettings(){
+            ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+        };
+        if (metadataExportType == MetadataExportType.ALL_TAGLIB_SPECIFIC_ONLY) { // Get only TagLib container-specific tags
+            object? possibleOutput = output.GetType().GetProperty("Tags")?.GetValue(output); // Try getting MP3 and MP4 custom tags
+            if (possibleOutput == null) { // Try getting Xiph comments
+                object? possibleComment = output.GetType().GetProperty("Comments")?.GetValue(output);
+                if (possibleComment != null && possibleComment.GetType() == typeof(List<TagLib.Ogg.XiphComment>)) {
+                    possibleOutput = (List<TagLib.Ogg.XiphComment>) possibleComment;
+                    settings.Converters = new List<JsonConverter>(){new XiphCommentConverter(binaryDataOption == PossibleBinaryDataOptions.DISCARD)};
+                    addToMultipleLines = 2;
+                }
+            }
+            if (possibleOutput != null && possibleOutput.GetType() == typeof(TagLib.Matroska.Tags)) { // Try getting Matroska SimpleTags
+                // Matroska Tags is an array of Matroska SimpleTag. So, we need to add all the metadata in one output Dictionary, taht'll be passed in the JSON serializer.
+                var allDicts = ((TagLib.Matroska.Tags) possibleOutput).Select(item => item.SimpleTags);
+                var dict = new Dictionary<string, List<TagLib.Matroska.SimpleTag>>();
+                foreach (var dicts in allDicts) {
+                    foreach(var singleDict in dicts) {
+                        dict[singleDict.Key] = singleDict.Value;
+                    }
+                }
+                possibleOutput = dict as Dictionary<string, List<TagLib.Matroska.SimpleTag>>;
+                settings.Converters = new List<JsonConverter>(){new MatroskaSimpleTagConverter()};
+                addToMultipleLines = 2;
+            }
+            if (possibleOutput != null) {
+                output = possibleOutput;
+                if (addToMultipleLines == 0) addToMultipleLines = 1; // Custom parsing for MP3 and MP4 files
+            }
+            if (output.GetType() == typeof(TagLib.Asf.Tag)) { // Simple conversion for ASF tags
+                addToMultipleLines = 2;
+                settings.Converters = new List<JsonConverter>(){new AsfCommentConverter()};
+            }
+        }
+        if (output.GetType() == typeof(TagLib.Asf.Tag) && metadataExportType != MetadataExportType.ALL_APP && addToMultipleLines == 0) { // ASF tags need a special Converter since otherwise the metadata value wouldn't be added in the JSON file.
+            settings.Converters = new List<JsonConverter>(){new AsfCommentConverter()};
+        } 
+        settings.ContractResolver = binaryDataOption == PossibleBinaryDataOptions.DISCARD ? new IgnoreByteArrayResolver(metadataExportType) : binaryDataOption == PossibleBinaryDataOptions.EXPORT_BASE64 ? new ByteArrayBase64Resolver(metadataExportType) : new StandardJsonResolver(metadataExportType);
+        return [Newtonsoft.Json.JsonConvert.SerializeObject(output, settings), addToMultipleLines.ToString()];
+    }
+
+    /// <summary>
+    /// The class that contains the exported params of the fetched metadata of the application
+    /// </summary>
+    private class CustomMetadataExportProps(string key, string[] value, string? meanstring, byte[]? binaryValue) {
+        public string? Meanstring = meanstring;
+        public string Key = key;
+        public string[] Value = value;
+        public byte[]? binaryValue = binaryValue;
+    }
+    /// <summary>
+    /// The container class used to contain both the application-fetched metadata and the TagLib.Tag object
+    /// </summary>
+    private class ExportProps(CustomMetadataExportProps[] allMetadata, TagLib.Tag tag) {
+        public CustomMetadataExportProps[] EntireMetadata = allMetadata;
+        public TagLib.Tag CommonTags = tag;
+
+    }
+    /// <summary>
+    /// Options to save a custom metadata
+    /// </summary>
+    private Dictionary<string, string> SaveCustomMetadata = new(){
+        {"0", "Apply to the current file"},
+        {"1", "Apply to everything"},
+        {"2", "Apply to the files with the same album"},
+    };
+
+    /// <summary>
+    /// Callback called when the user has changed the suggested metadata container
+    /// </summary>
+    private void ChangedMetadataContainer(ChangeEventArgs e) {
+        GetAddedTags((CustomMetadataFormat.CustomMetadataTypes)int.Parse(e.Value.ToString()), AvailableTags[CurrentFile].tag);
+    }
+
+    /// <summary>
+    /// Function called when the user has chosen to save a custom metadata.
+    /// </summary>
+    private void HandleSaveCustomMetadata(MenuChangeEventArgs args) {
+        List<TagInfoContainer> tagsToAdd = args.Id == "1" ? AvailableTags : args.Id == "2" ? AvailableTags.Where(item => item.tag.Tag.Album == AvailableTags[CurrentFile].tag.Tag.Album).ToList() : new List<TagInfoContainer>(){AvailableTags[CurrentFile]};
+        foreach (TagInfoContainer container in tagsToAdd) {
+            string type = container.tag.TagTypes.ToString().ToLower();
+            CustomMetadataFormat.CustomMetadataTypes? tempType = tagsToAdd.Count() == 1 ? (CustomMetadataFormat.CustomMetadataTypes?)int.Parse(ContainerSelectBinding) : CustomMetadataFormat.GetSuggestedContainer(type);
+            if (tempType != null)
+            {
+                UpdateCustomValueHandle((CustomMetadataFormat.CustomMetadataTypes) tempType, container.tag);
+            }
+        }
+        GetAddedTags((CustomMetadataFormat.CustomMetadataTypes)int.Parse(ContainerSelectBinding),
+        AvailableTags[CurrentFile].tag);
+    }
+
+    /// <summary>
+    /// The array of all the metadata that have been added to the file
+    /// </summary>
+    private CurrentMetadataStorage[] addedMetadata = [];
+
+
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
@@ -92,31 +424,21 @@
         string type = AvailableTags[CurrentFile].tag.TagTypes.ToString().ToLower();
         CustomMetadataFormat.CustomMetadataTypes? tempType = CustomMetadataFormat.GetSuggestedContainer(type);
         if (tempType != null) ContainerSelectBinding = ((int)tempType).ToString();
+        // Get all the added metadata
+        GetAddedTags((CustomMetadataFormat.CustomMetadataTypes)int.Parse(ContainerSelectBinding),
+        AvailableTags[CurrentFile].tag);
     }
+
     /// <summary>
-    /// Save the custom metadata tag, and close the dialog
-    /// <param name="SaveMultiple">If the custom metadata should be applied to every file</param>
+    /// Get all the tags that have been added to the passed file
+    /// <param name="type">The container to read of that specific file</param>
+    /// <param name="file">The TagLib.File object where the metadata will be read</param>
     /// </summary>
-    private async void SaveFile(bool SaveMultiple)
+    private void GetAddedTags(CustomMetadataFormat.CustomMetadataTypes type, TagLib.File file)
     {
-        if (SaveMultiple)
-        {
-            foreach (TagInfoContainer container in AvailableTags)
-            {
-                // Get the new suggested type for the file
-                string type = container.tag.TagTypes.ToString().ToLower();
-                CustomMetadataFormat.CustomMetadataTypes? tempType = CustomMetadataFormat.GetSuggestedContainer(type);
-                if (tempType != null)
-                {
-                    ContainerSelectBinding = ((int)tempType).ToString(); // This is done to update the UI
-                    UpdateCustomValueHandle((CustomMetadataFormat.CustomMetadataTypes)int.Parse(ContainerSelectBinding), container.tag);
-                }
-            }
-        }
-        else UpdateCustomValueHandle((CustomMetadataFormat.CustomMetadataTypes)int.Parse(ContainerSelectBinding),
-        AvailableTags[CurrentFile].tag); // Update single files
-        Callback();
+        addedMetadata = MetadataChange.CustomMetadataUtils.GetAllTags(type, file, () => GetAddedTags(type, file));
     }
+    
     /// <summary>
     /// The void that adds the custom metadata to the supported containers
     /// <param name="type">The CustomMetadataTypes enum of the container</param>
@@ -124,67 +446,7 @@
     /// </summary>
     private void UpdateCustomValueHandle(CustomMetadataFormat.CustomMetadataTypes type, TagLib.File file)
     {
-        switch (type)
-        {
-            case CustomMetadataFormat.CustomMetadataTypes.APE:
-                {
-                    TagLib.Ape.Tag tag = (TagLib.Ape.Tag)file.GetTag(TagLib.TagTypes.Ape, true);
-                    tag.SetValue(key, value);
-                    break;
-                }
-            case CustomMetadataFormat.CustomMetadataTypes.APPLE:
-                {
-                    TagLib.Mpeg4.AppleTag tag = (TagLib.Mpeg4.AppleTag)file.GetTag(TagLib.TagTypes.Apple, true);
-                    tag.SetDashBox(meanstring, key, value);
-                    break;
-                }
-            case CustomMetadataFormat.CustomMetadataTypes.ASF:
-                {
-                    TagLib.Asf.Tag tag = (TagLib.Asf.Tag)file.GetTag(TagLib.TagTypes.Asf, true);
-                    tag.SetDescriptorString(value, [key]);
-                    break;
-                }
-            case CustomMetadataFormat.CustomMetadataTypes.ID3:
-                {
-                    TagLib.Id3v2.Tag metadata = (TagLib.Id3v2.Tag)file.GetTag(TagLib.TagTypes.Id3v2, true);
-                    TagLib.Id3v2.PrivateFrame privateFrame = TagLib.Id3v2.PrivateFrame.Get(metadata, key, true);
-                    privateFrame.PrivateData = TagLib.ByteVector.FromString(value);
-                    break;
-                }
-            case CustomMetadataFormat.CustomMetadataTypes.MATROSKA:
-                {
-
-                    TagLib.Matroska.Tag tag = (TagLib.Matroska.Tag)file.GetTag(TagLib.TagTypes.Matroska, true);
-                    tag.Set(key, null, value);
-                    break;
-                }
-            case CustomMetadataFormat.CustomMetadataTypes.XIPH:
-                {
-                    TagLib.Ogg.XiphComment tag = (TagLib.Ogg.XiphComment)file.GetTag(TagLib.TagTypes.Xiph, true);
-                    tag.SetField(key, [value]);
-                    break;
-                }
-            case CustomMetadataFormat.CustomMetadataTypes.PNG:
-                {
-                    TagLib.Png.PngTag tag = (TagLib.Png.PngTag)file.GetTag(TagLib.TagTypes.Png, true);
-                    tag.SetKeyword(key, value);
-                    break;
-                }
-            case CustomMetadataFormat.CustomMetadataTypes.RIFF:
-                {
-                    TagLib.Riff.MovieIdTag tag = (TagLib.Riff.MovieIdTag)file.GetTag(TagLib.TagTypes.MovieId, true);
-                    tag.SetValue(TagLib.ByteVector.FromString(key), new TagLib.ByteVectorCollection(){
-TagLib.ByteVector.FromString(value)
-});
-                    break;
-                }
-            case CustomMetadataFormat.CustomMetadataTypes.XMP:
-                {
-                    TagLib.Xmp.XmpTag tag = (TagLib.Xmp.XmpTag)file.GetTag(TagLib.TagTypes.XMP, true);
-                    tag.SetTextNode(meanstring, key, value);
-                    break;
-                }
-        }
+        CustomMetadataUtils.UpdateCustomValueHandle(type, file, key, value, ContainerSelectBinding == "4" ? subkey : meanstring, mp3Type);
     }
 
 

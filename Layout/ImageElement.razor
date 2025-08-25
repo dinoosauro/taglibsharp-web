@@ -1,13 +1,16 @@
 @using Microsoft.FluentUI.AspNetCore.Components;
 @using Microsoft.JSInterop;
 @using MetadataChange;
+@using System.IO.Compression
 @inject IJSRuntime JS;
+@inject IToastService ToastService
 
-<FluentDialog>
+<FluentDialog Style="z-index: 998 !important">
         <FluentDialogHeader>
         <div>
             <h2>Update image content:</h2>
-            <FluentButton Appearance="Appearance.Lightweight" @onclick="() => GetUpdatedList(imageTag, ApplyDestination.DISCARD_EDITS)">X</FluentButton>
+            <FluentButton Id="CloseDialogBtn" Appearance="Appearance.Lightweight" @onclick="() => GetUpdatedList(imageTag, ApplyDestination.DISCARD_EDITS)" IconStart="@(new Icons.Regular.Size20.Dismiss())"></FluentButton>
+            <FluentTooltip Anchor="CloseDialogBtn" Position="TooltipPosition.Left">Close the dialog, without saving the edits</FluentTooltip>
         </div>
     </FluentDialogHeader>
     <InputFile OnChange="NextAlbumArt" id="albumArtPicker" style="display: none;" ></InputFile>
@@ -48,26 +51,33 @@
     {
         <FluentSelect Items="@imageTag" OptionValue="@(tag => tag.id)"
             @onchange='(val) => UpdateSelectedPicture(val.Value.ToString())'
-            OptionText="@(tag => tag.picture.Type + " - " + tag.picture.Description + " [" + tag.id + "]")">
+            OptionText="@(tag => tag.picture.Type + " - " + tag.picture.Description + " [" + (int.Parse(tag.id) + 1) + "]")">
         </FluentSelect><br><br>
-        <div style="display: flex; justify-content: center;">
-        <img style="max-width: 300px; max-height: 300px;" id="imageSource">
-        </div><br>
-            }
-            @if (addImageBytes.Length == 0) {
-        <div class="flexContainer">
-            <FluentButton @onclick='() => JS.InvokeVoidAsync("clickPictureImage")'>Add new album art</FluentButton>
-            @if (imageTag.Count > 0) {
-            <FluentButton @onclick='RemoveItem'>Remove this album art</FluentButton>
-            }
-            </div><br><br>
+        <FluentCard>
+            <div style="display: flex; justify-content: center;">
+            <img style="max-width: 300px; max-height: 300px; border-radius: 8px;" id="imageSource">
+            </div><br>
+        @if (addImageBytes.Length == 0) {
             <div class="flexContainer">
-                <FluentButton Appearance="Appearance.Accent" @onclick="() => GetUpdatedList(imageTag, ApplyDestination.APPLY_CURRENT)">Save (this file)</FluentButton>
-                <FluentButton @onclick="() => GetUpdatedList(imageTag, ApplyDestination.APPLY_SAME_NAME)">Save (files that have the same name)</FluentButton>
-                <FluentButton @onclick="() => GetUpdatedList(imageTag, ApplyDestination.APPLY_SAME_ALBUM)">Save (files with the same album)</FluentButton>
-                <FluentButton @onclick="() => GetUpdatedList(imageTag, ApplyDestination.APPLY_EVERYTHING)">Save (everywhere)</FluentButton>
+                <FluentButton @onclick='() => JS.InvokeVoidAsync("clickPictureImage")'>Add new album art</FluentButton>
+                <FluentButton @onclick='RemoveItem'>Remove this album art</FluentButton>
             </div>
             }
+        </FluentCard>
+    }
+    @if (imageTag.Count == 0 && addImageBytes.Length == 0) {
+        <br>
+        <FluentButton @onclick='() => JS.InvokeVoidAsync("clickPictureImage")'>Add new album art</FluentButton><br>
+    }
+    @if (addImageBytes.Length == 0) {
+        <br>
+        <div class="labelFlex fullWidthChildren">
+            <FluentMenuButton Text="Save album art(s)" OnMenuChanged="SaveImageEvent" Items="@SaveOptions"></FluentMenuButton>
+            <FluentMenuButton ButtonAppearance="Appearance.Neutral" Text="Export album art(s)" Items="@ExportOptionsPicker" OnMenuChanged='@(async (args) => {
+                await ExportImage((ExportOptions)int.Parse(args.Id?.ToString() ?? "0"));
+            })'></FluentMenuButton>
+        </div>
+    }
     </FluentDialog>
     <script>
         /**
@@ -112,17 +122,20 @@
         }
     </script>
 
-    @code {
-        /// <summary>
-        /// The list of pictures of the current tag
-        /// </summary>
-    [Parameter]
-    public required TagLib.IPicture[] imageTags { get; set; }
+@code {
     /// <summary>
-    /// The callback to close the dialog. Note that this callbacks needs to handle also adding the image (that are in the first param passed). The ApplyDestination object indicates what should be done about the new image tags.
+    /// The list of pictures of the current tag
     /// </summary>
     [Parameter]
-    public required Action<List<ImageTagCount>, ApplyDestination> GetUpdatedList { get; set; }
+    public required TagLib.IPicture[] imageTags { get; set; }
+    [Parameter]
+    public required List<TagInfoContainer> files {get; set;}
+    [Parameter]
+    public required int fileEditPosition {get; set;}
+    [Parameter]
+    public required Action Callback {get; set;}
+    [Parameter]
+    public required Action<byte[], string> DownloadFile {get; set;}
     /// <summary>
     /// The list of the images to add to the currently-selected tag
     /// </summary>
@@ -131,7 +144,7 @@
     /// The byte array of the selected image.
     /// If this is empty, the UI will show the already-added images. Otherwise, the image compression UI will be shown (so that the user can add the albunm art).
     /// </summary>
-        private byte[] addImageBytes = [];
+    private byte[] addImageBytes = [];
     /// <summary>
     /// The position in the "imageTags" array of the image the user is seeing
     /// </summary>
@@ -141,7 +154,7 @@
     /// The quality of the output JPEG Image
     /// </summary>
     private double compressionQuality = 0.9;
-     /// <summary>
+    /// <summary>
     /// The maximum height of the JPEG image
     /// </summary>
     private string maxHeight = "700";
@@ -152,7 +165,7 @@
     /// <summary>
     /// The ID of the image category of the new image
     /// </summary>
-    private string pictureChosenType = "0";
+    private string pictureChosenType = "3";
     /// <summary>
     /// If the new image should be re-encoded
     /// </summary>
@@ -161,6 +174,166 @@
     /// The mimetype of the provided image. This is used only if the user provides their own image, and doesn't want to re-encode it.
     /// </summary>
     private string imageReEncodingMimeType = "";
+    /// <summary>
+    /// The Dictionary of possible methods to save the album image
+    /// </summary>
+    private Dictionary<string, string> SaveOptions = new(){
+        {"0", "Save (this file)"},
+        {"2", "Save (files with the same name)"},
+        {"3", "Save (files with the same album)"},
+        {"1", "Save (everywhere)"}
+    };
+
+    /// <summary>
+    /// Description to the "Export images" FluentMenuButton
+    /// </summary>
+    private Dictionary<string, string> ExportOptionsPicker = new() {
+        {"0", "Export this image"},
+        {"1", "Export all the images of this file"},
+        {"2", "Export all images of all loaded files"}
+    };
+
+    /// <summary>
+    /// What images should be exported
+    /// </summary>
+    public enum ExportOptions {
+        /// <summary>
+        /// Export only the selected image
+        /// </summary>
+        EXPORT_THIS_IMAGE = 0,
+        /// <summary>
+        /// Export all the images included in the selected file
+        /// </summary>
+        EXPORT_ALL_IMAGES = 1,
+        /// <summary>
+        /// Export all the images of all opened files
+        /// </summary>
+        EXPORT_ALL_IMAGES_OF_EVERYTHING = 2
+    }
+    
+    /// <summary>
+    /// Get the path for the exported album art
+    /// <param name="sourcePath">the source path of the MP3 file</param>
+    /// <param name="position">the number of the image in the array of images contained in the file</param>
+    /// <param name="string">the mimetype of the output image</param>
+    /// </summary>
+    private string GetExportedImagePath(string sourcePath, int position, string mimetype) {
+        if (sourcePath.IndexOf("/") == -1) return $"[{position}] {sourcePath[..sourcePath.LastIndexOf(".")]}.{(mimetype == "image/jpeg" ? "jpg" : mimetype[(mimetype.IndexOf("/") + 1)..])}";
+        return $"{sourcePath[..sourcePath.LastIndexOf("/")]}/[{position}] {sourcePath[(sourcePath.LastIndexOf("/") + 1)..sourcePath.LastIndexOf(".")]}.{(mimetype == "image/jpeg" ? "jpg" : mimetype[(mimetype.IndexOf("/") + 1)..])}";
+    }
+    /// <summary>
+    /// Export one or more images embedded in the audio/video file
+    /// </summary>
+    private async Task ExportImage(ExportOptions exportOptions) {
+        string ToastId = Guid.NewGuid().ToString();
+        ProgressToastParams toastParams = new ProgressToastParams(){
+            Title = "Operation starting...",
+            Max = (exportOptions == ExportOptions.EXPORT_ALL_IMAGES ? imageTags.Count() : files.Count()),
+            Progress = 0
+        };
+        if (exportOptions != ExportOptions.EXPORT_THIS_IMAGE) ToastService.ShowToast<Layout.ProgressToast, ProgressToastParams>(new ToastParameters<ProgressToastParams>()
+            {
+                Id = ToastId,
+                Intent = ToastIntent.Custom,
+                Timeout = 0,
+                Icon = (new Icons.Regular.Size20.ImageCopy(), Color.Accent),
+                Content = toastParams
+            });
+        switch (exportOptions) {
+            case ExportOptions.EXPORT_THIS_IMAGE: { // Download the single image, without any zip file
+                DownloadFile(imageTag.ElementAt(selectedImage).picture.Data.ToArray(), $"{files[fileEditPosition].file[..files[fileEditPosition].file.LastIndexOf(".")]}.{(imageTag.ElementAt(selectedImage).picture.MimeType != null ? imageTag.ElementAt(selectedImage).picture.MimeType[(imageTag.ElementAt(selectedImage).picture.MimeType.IndexOf("/") + 1)..] : "jpg")}");
+                break;
+            }
+            case ExportOptions.EXPORT_ALL_IMAGES: { // Get all images of the current file, and download them
+                using (MemoryStream stream = new MemoryStream()) {
+                    using (ZipArchive archive = new ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create, true)) {
+                        int i = 1;
+                        foreach (TagLib.IPicture picture in imageTags) {
+                            ZipArchiveEntry entry = archive.CreateEntry(GetExportedImagePath(files[fileEditPosition].file, i, picture.MimeType ?? "image/jpg"), CompressionLevel.Fastest);
+                            using (Stream write = entry.Open()) await write.WriteAsync(picture.Data.ToArray());
+                            toastParams.Title = $"Added image {i} to the zip file";
+                            i++;
+                            toastParams.Progress++;
+                            toastParams.UpdateState?.Invoke();
+                            await Task.Delay(25);
+                        }
+                    }
+                    DownloadFile(stream.ToArray(), $"{files[fileEditPosition].file[..files[fileEditPosition].file.LastIndexOf(".")]}.zip");
+                }
+                break;
+            }
+            case ExportOptions.EXPORT_ALL_IMAGES_OF_EVERYTHING: { // Get all the images contained in every loaded file, and save them in a zip file.
+                using (MemoryStream stream = new MemoryStream()) {
+                    using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Create, true)) {
+                        foreach (TagInfoContainer file in files) {
+                            toastParams.Title = $"Adding images of {file.file}";
+                            toastParams.Progress++;
+                            toastParams.UpdateState?.Invoke();
+                            await Task.Delay(25);
+                            if (file.tag.Tag.Pictures == null) continue;
+                            int i = 1;
+                            foreach (TagLib.IPicture picture in file.tag.Tag.Pictures) {
+                                ZipArchiveEntry entry = archive.CreateEntry(GetExportedImagePath(file.file, i, picture.MimeType ?? "image/jpg"), CompressionLevel.Fastest);
+                                using (Stream write = entry.Open()) await write.WriteAsync(picture.Data.ToArray());
+                                i++;
+                            }
+                        }
+                    }
+                    DownloadFile(stream.ToArray(), $"EmbeddedImages-{DateTime.Now.ToString().Replace("/", "-")}.zip");
+                }
+                break;
+            }
+        }
+        toastParams.Title = "Images exported!";
+        toastParams.Max = 1;
+        toastParams.Progress = 1;
+        toastParams.UpdateState?.Invoke();
+        await Task.Delay(3500);
+        ToastService.CloseToast(ToastId);
+    }
+
+    /// <summary>
+    /// Update the Album Art for the selected items
+    /// </summary>
+    /// <param name="images">A list of the new images to add</param>
+    /// <param name="destination">If the image should be applied only to the selected image, to everything, or if the edits
+    /// should be discarded.</param>
+    private void GetUpdatedList(List<ImageElement.ImageTagCount> images, ImageElement.ApplyDestination destination)
+    {
+        TagLib.IPicture[] pictures = images.Select(item => item.picture).ToArray();
+        switch (destination)
+        {
+            case ImageElement.ApplyDestination.APPLY_CURRENT:
+                files[fileEditPosition].tag.Tag.Pictures = pictures;
+                break;
+            case ImageElement.ApplyDestination.APPLY_EVERYTHING:
+                foreach (TagInfoContainer file in files) file.tag.Tag.Pictures = pictures;
+                break;
+            case ImageElement.ApplyDestination.APPLY_SAME_NAME:
+                var dictionary = (new GetFilesWithSameName(files)).allowedValues;
+                if (dictionary.TryGetValue(files[fileEditPosition].file.Substring(0, files[fileEditPosition].file.LastIndexOf(".")), out
+                List<TagInfoContainer> applyToThis))
+                {
+                    foreach (TagInfoContainer apply in applyToThis) apply.tag.Tag.Pictures = pictures;
+                }
+                break;
+            case ImageElement.ApplyDestination.APPLY_SAME_ALBUM:
+                foreach (TagInfoContainer file in files)
+                {
+                    if (file.tag.Tag.Album == files[fileEditPosition].tag.Tag.Album) file.tag.Tag.Pictures = pictures;
+                }
+                break;
+
+        }
+        Callback();
+    }
+
+    /// <summary>
+    /// The event called when the user has chosen to save the album arts.
+    /// </summary>
+    private void SaveImageEvent(MenuChangeEventArgs e) {
+        GetUpdatedList(imageTag, (ApplyDestination)int.Parse(e.Id ?? "0"));
+    }
 
     protected override void OnAfterRender(bool firstRender) {
         base.OnAfterRender(firstRender);
@@ -187,14 +360,14 @@
     /// </summary>
     private async Task AddNewImage() {
         byte[] reEncodedCanvas = reEncodeImage ? await JS.InvokeAsync<byte[]>("getImageBlob", [addImageBytes, compressionQuality, maxHeight, maxWidth]) : addImageBytes; // The re-encoding is done using JavaScript's Canvas API
-            if (reEncodedCanvas.Length > 0) {
+        if (reEncodedCanvas.Length > 0) {
             TagLib.Picture picture = new TagLib.Picture();
             picture.Type = (TagLib.PictureType) int.Parse(pictureChosenType);
             picture.MimeType = reEncodeImage ? "image/jpeg" : imageReEncodingMimeType;
             picture.Data = reEncodedCanvas;
             imageTag.Add(new ImageTagCount(picture, imageTag.Count.ToString()));
-            }
-            addImageBytes = []; // By making this blank, the UI will go back to showing the available images
+        }
+        addImageBytes = []; // By making this blank, the UI will go back to showing the available images
     }
     /// <summary>
     /// The callback called when the user has selected a new album art to add. The only thing this does is converting the InputFileEventArg to a Byte[]
@@ -258,6 +431,9 @@
         /// Apply the new edits to the files that have the same file name
         /// </summary>
         APPLY_SAME_NAME = 2,
+        /// <summary>
+        /// Apply the new edits to the files that have the same album
+        /// </summary>
         APPLY_SAME_ALBUM = 3
     }
 }
