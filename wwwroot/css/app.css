@@ -1,3 +1,18 @@
+@font-face {
+  font-family: "Work Sans";
+  src: url("./WorkSans-VariableFont_wght.woff2") format("woff2");
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Work Sans";
+  src: url("./WorkSans-Italic-VariableFont_wght.woff2") format("woff2");
+  font-style: italic;
+}
+
+h1,h2,h3,h4,h5,h6,strong,b {
+    font-weight: 700;
+}
 :root {
     --body-font: "Work Sans", sans-serif !important;
     font-family: var(--body-font) !important;
@@ -115,4 +130,18 @@ fluent-dialog {
 }
 .fullWidthChildren > * {
     width: 100%;
+}
+.flexCenter {
+    display: flex;
+    justify-content: center;
+}
+
+video {
+    max-height: 60vh;
+    width: 100%;
+    border-radius: 8px;
+}
+audio {
+    width: 100%;
+    border-radius: 8px;
 }

@@ -1,0 +1,82 @@
+@using Microsoft.FluentUI.AspNetCore.Components;
+@inject IJSRuntime JS;
+
+<FluentDialog>
+    <FluentDialogHeader>
+        <div>
+                <h2>Play @((isVideo ? "video" : "audio")):</h2>
+            <FluentButton Id="CloseDialogBtn" IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                Appearance="Appearance.Lightweight" @onclick="CloseCallback"></FluentButton>
+            <FluentTooltip Anchor="CloseDialogBtn" Position="TooltipPosition.Left">Close the dialog.</FluentTooltip>
+        </div>
+    </FluentDialogHeader>
+    @if (isVideo) {
+        <div class="flexCenter">
+            <video src="@blobUrl" controls autoplay></video>
+        </div>
+    } else {
+        <audio src="@blobUrl" controls autoplay></audio>
+    }<br><br>
+    <FluentDataGrid TGridItem="string">
+        <FluentDataGridRow>
+            <FluentDataGridCell><strong>Title:</strong> @(SelectedFile.tag.Tag.Title ?? SelectedFile.file)</FluentDataGridCell>
+        </FluentDataGridRow>
+        <FluentDataGridRow>
+            <FluentDataGridCell><strong>Album:</strong> @(SelectedFile.tag.Tag.Album)</FluentDataGridCell>
+        </FluentDataGridRow>
+        <FluentDataGridRow>
+            <FluentDataGridCell><strong>Artists:</strong> @(string.Join(", ", SelectedFile.tag.Tag.Performers))</FluentDataGridCell>
+        </FluentDataGridRow>
+        <FluentDataGridRow>
+            <FluentDataGridCell><strong>Track:</strong> @(SelectedFile.tag.Tag.Track)/@(SelectedFile.tag.Tag.TrackCount)</FluentDataGridCell>
+        </FluentDataGridRow>
+    </FluentDataGrid>
+</FluentDialog>
+
+<script>
+    function getObjectUrl(array) {
+        return URL.createObjectURL(new Blob([array]));
+    }
+    function removeObjectUrl(url) {
+        try {
+            URL.revokeObjectURL(url);
+        } catch(ex) {
+            console.error(ex);
+        }
+    }
+</script>
+
+@code {
+    /// <summary>
+    /// The function called to close the dialog
+    /// </summary>
+    [Parameter]
+    public required Action Callback { get; set; }
+    /// <summary>
+    /// The TagInfoContainer object of the file that should be played
+    /// </summary>
+
+    [Parameter]
+    public required TagInfoContainer SelectedFile {get; set; }
+    /// <summary>
+    /// The URL of the audio/video resource
+    /// </summary>
+    private string blobUrl = "";
+    /// <summary>
+    /// If a Video element should be displayed instead of an Audio element
+    /// </summary>
+    private bool isVideo = false;
+
+    private async Task CloseCallback() {
+        await JS.InvokeVoidAsync("removeObjectUrl", [blobUrl]);
+        Callback();
+    }
+    protected override async Task OnParametersSetAsync() {
+        await base.OnParametersSetAsync();
+        isVideo = SelectedFile.tag.Properties.VideoWidth != null && SelectedFile.tag.Properties.VideoWidth > 0;
+        blobUrl = await JS.InvokeAsync<string>("getObjectUrl", [await File.ReadAllBytesAsync(SelectedFile.tag.FileAbstraction.Name)]);
+        StateHasChanged();
+    }
+
+}
+

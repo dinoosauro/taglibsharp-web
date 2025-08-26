@@ -66,6 +66,11 @@
                                         showUploadLyricsDialog = true;
                                     })' IconStart="@(new Icons.Regular.Size20.AttachText())"></FluentButton>
                                     <FluentTooltip Anchor="@($"{context.id}customLyrics")" Position="TooltipPosition.Bottom">Fetch lyrics online, or add them from a local file</FluentTooltip>
+                                    <FluentButton Id="@($"{context.id}playAudio")" OnClick="@(() => {
+                                        fileEditPosition = int.Parse(@context.id);
+                                        showPlayDialog = true;
+                                    })" IconStart="@(new Icons.Regular.Size20.Play())"></FluentButton>
+                                    <FluentTooltip Anchor="@($"{context.id}playAudio")" Position="TooltipPosition.Bottom">Play the audio or video file</FluentTooltip>
                                 </div>
                             </TemplateColumn>
                             <TemplateColumn Width="@((100 /(gridSelected.Count + 2)) + "%")"
@@ -152,6 +157,7 @@
                             showImageDialog = arg.Id == "0";
                             showCustomMetadata = arg.Id == "1";
                             showUploadLyricsDialog = arg.Id == "2";
+                            showPlayDialog = arg.Id == "3";
                         })'></FluentMenuButton>
                     }
                     <FluentButton Appearance="@(showGrid ? Appearance.Accent : Appearance.Outline)"
@@ -238,6 +244,12 @@
                 if (!showUploadLyricsDialog) StateHasChanged();
                 }" DownloadFile="DownloadLrcZipFile"></UploadLyrics>
             }
+            @if (showPlayDialog) {
+            <PlayFile Callback="() => {
+                showPlayDialog = false;
+                StateHasChanged();
+            }" SelectedFile="files[fileEditPosition]"></PlayFile>
+        }
         }
         else
         {
@@ -407,6 +419,10 @@
     /// </summary>
     public bool showCopyMetadata = false;
     /// <summary>
+    /// If the dialog that plays the uploaded video or audio file should be played
+    /// </summary>
+    public bool showPlayDialog = false;
+    /// <summary>
     /// If the settings dialog should be shown
     /// </summary>
     public bool showSettings = false;
@@ -456,7 +472,8 @@
     private Dictionary<string, string> advancedMetadataSettings = new(){
         {"0", "Change album art"},
         {"1", "Add custom metadata & advanced metadata view"},
-        {"2", "Fetch lyrics online, or add them from a local file"}
+        {"2", "Fetch lyrics online, or add them from a local file"},
+        {"3", "Play the current audio/video file"}
     };
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -499,7 +516,7 @@
         if (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_EVERYTHING) {
             TagValueHandler.SetCurrentValue(val.Value == null ? null : val.Value.ToString(), files,
         item);
-        } else if (selectedFile.tag.Tag.Album.Trim() != "" && (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_ALBUM || (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_COMMON_ALBUM && EnsureNotCommonValue(item)))) {
+        } else if (selectedFile.tag.Tag.Album != null && selectedFile.tag.Tag.Album.Trim() != "" && (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_ALBUM || (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_COMMON_ALBUM && EnsureNotCommonValue(item)))) {
             foreach (TagInfoContainer file in files.Where(item => item.tag.Tag.Album == selectedFile.tag.Tag.Album).ToArray()) { // We need to convert the IEnumerable to an Array since otherwise, if the user changed the album name, not all of the objects would be updated with the new album name. By converting it to an array, we iterate over all the items that currently have that album name, even if we change their album value.
                 TagValueHandler.SetCurrentValue(val.Value == null ? null : val.Value.ToString(), file.tag.Tag, item);
             }

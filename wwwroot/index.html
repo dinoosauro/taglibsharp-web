@@ -7,8 +7,10 @@
     <title>TagLibSharp-Web</title>
     <base href="./" />
     <link rel="stylesheet" href="css/app.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,100..900;1,100..900&display=swap"
-        rel="stylesheet">
+    <link rel="stylesheet" href="css/fonts/400-italic.css">
+    <link rel="stylesheet" href="css/fonts/400.css">
+    <link rel="stylesheet" href="css/fonts/700.css">
+    <link rel="stylesheet" href="css/fonts/700-italic.css">
     <link rel="icon" type="image/png" href="icon.svg" />
     <link href="MetadataChange.styles.css" rel="stylesheet" />
     <meta name="description"
@@ -101,7 +103,7 @@
             localStorage.setItem("TagLibWeb-UseGridUI", grid ? "a" : "b");
         }
         navigator.serviceWorker.register('service-worker.js', { scope: window.location.href.substring(0, window.location.href.lastIndexOf("/") + 1) });
-        const appVersion = "2.0.0";
+        const appVersion = "2.0.1";
         fetch("./updatecode", { cache: "no-store" }).then((res) => res.text().then((text) => { if (text.replace("\n", "") !== appVersion) if (confirm(`There's a new version of TagLibSharp-Web. Do you want to update? [${appVersion} --> ${text.replace("\n", "")}]`)) { caches.delete("taglibsharpweb-cache"); location.reload(true); } }).catch((e) => { console.error(e) })).catch((e) => console.error(e)); // Check if the application code is the same as the current application version and, if not, ask the user to update
 
         window.onbeforeunload = (event) => {
