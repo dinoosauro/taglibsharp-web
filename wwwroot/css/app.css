@@ -2,12 +2,14 @@
   font-family: "Work Sans";
   src: url("./WorkSans-VariableFont_wght.woff2") format("woff2");
   font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
   font-family: "Work Sans";
   src: url("./WorkSans-Italic-VariableFont_wght.woff2") format("woff2");
   font-style: italic;
+  font-display: swap;
 }
 
 h1,h2,h3,h4,h5,h6,strong,b {
