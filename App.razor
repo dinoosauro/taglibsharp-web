@@ -518,6 +518,8 @@
         item);
         } else if (selectedFile.tag.Tag.Album != null && selectedFile.tag.Tag.Album.Trim() != "" && (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_ALBUM || (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_COMMON_ALBUM && EnsureNotCommonValue(item)))) {
             foreach (TagInfoContainer file in files.Where(item => item.tag.Tag.Album == selectedFile.tag.Tag.Album).ToArray()) { // We need to convert the IEnumerable to an Array since otherwise, if the user changed the album name, not all of the objects would be updated with the new album name. By converting it to an array, we iterate over all the items that currently have that album name, even if we change their album value.
+                if (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_COMMON_ALBUM && item.TagLibProperty == "TrackCount" && file.tag.Tag.DiscCount > 1 && file.tag.Tag.Disc != selectedFile.tag.Tag.Disc && selectedFile.id != file.id) continue; // Since multiple disks have different track count, we should update this property only if they're on the same disk.
+                if (IntelligentAlbumUpdate == MultipleUpdateOptions.UPDATE_COMMON_ALBUM && item.TagLibProperty == "Disc" && file.tag.Tag.DiscCount > 1 && file.id != selectedFile.id) continue; // Also, the "Disk" property is no longer a common value if there's more than a disk.
                 TagValueHandler.SetCurrentValue(val.Value == null ? null : val.Value.ToString(), file.tag.Tag, item);
             }
         } else TagValueHandler.SetCurrentValue(val.Value == null ? null : val.Value.ToString(), selectedFile.tag.Tag,

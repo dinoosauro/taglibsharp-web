@@ -26,7 +26,7 @@ buttons at the left:
 - The star icon will show you the `Custom metadata edtor` dialog. Here you can
   add a custom metadata (if the container is supported), see all the metadata that have been added to the audio/video file and also download all the fetched information by TagLib Sharp in either a JSON or CSV (really experimental) file.
 - The attachment text icon will show you the `Upload lyrics` dialog. Here you can either upload the lyrics from a local LRC/TTML/text file, or you can fetch them from LRCLib. In this last case, you can also download a zip file with the synced lyrics.
-
+- The play icon will show you the `Play audio/video` dialog.
 
 Before the table, you can find a dropdown menu: here you can choose 
 - If you want to edit only the single entry;
@@ -44,9 +44,7 @@ metadata field to edit manually.
 
 ![Single file view UI](./readme_assets/single_metadata_ui.jpg)
 
-In this UI, the three dialogs mentioned above can be
-accessed by clicking on the `Edit other metadata` dropdown button. In both of the UIs you'll
-find a third button, "Copy metadata", that allows you to copy metadata from a
+In this UI, the four dialogs mentioned above can be opened by clicking on the `Edit other metadata` dropdown button. In both of the UIs you'll find a third button, "Copy metadata", that allows you to copy metadata from a
 file to another. You can find more about this below.
 
 ### Saving the edits
@@ -179,6 +177,11 @@ album art. You can also choose to avoid copying metadata fields that are usually
 With this dialog, you can update the lyrics of either the file you've chosen, or all the files loaded in the application, or all the files with no lyrics from either a local file (LRC, TTML and plain text files are supported) or by fetching them from LRCLib. In this last case, you can also save the synced lyrics in a .LRC file that'll be downloaded on your device.
 
 ![The lyrics upload UI](./readme_assets/lyrics_upload.jpg)
+
+### Play audio/video
+If you're not sure about the audio or video file you've picked, you can view it using the browser's native Video or Audio controls. You'll also find below the audio/video content the most important metadata.
+
+![The audio player UI](./readme_assets/audio_player.jpg)
 
 ## Settings
 
